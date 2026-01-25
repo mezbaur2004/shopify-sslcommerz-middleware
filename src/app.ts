@@ -1,21 +1,19 @@
-import express, {Application, NextFunction, Request, Response} from "express"
-import dotenv from "dotenv";
+import express, {Application, Request, Response} from "express"
 import router from "./route/api"
 import rateLimit, {RateLimitRequestHandler} from "express-rate-limit";
 import helmet from "helmet";
 import hpp from "hpp";
 import cors from "cors"
 import cookieParser from "cookie-parser";
-import {connectDB} from "./db";
 import {sanitizeMiddleware} from "./middleware/sanitize";
+import {envVars} from "./config/envVariable.config";
 
-dotenv.config();
 const app: Application = express();
 
 //middleware
 app.use(cookieParser());
 
-const origins: string[] = process.env.ORIGINS?.split(",") ?? [];
+const origins: string[] =envVars.ORIGINS?.split(",") ?? [];
 const corsOptions = {
     origin: origins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],

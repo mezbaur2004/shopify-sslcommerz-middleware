@@ -20,6 +20,7 @@ Create a `.env` file:
 
 ```
 PORT=8080
+NODE_ENV=development
 ORIGINS=http://localhost:3000
 DB=mongodb+srv://<your-db-connection-string>
 ```
