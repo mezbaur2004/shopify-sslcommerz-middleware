@@ -23,6 +23,8 @@ app.use(cors(corsOptions));
 
 app.use(express.json());
 
+app.use(express.urlencoded({limit: '1mb', extended: true}));
+
 app.use(helmet({
     contentSecurityPolicy: false,
 }));
@@ -31,12 +33,9 @@ app.use(hpp());
 
 app.use(sanitizeMiddleware);
 
-
-app.use(express.urlencoded({limit: '1mb', extended: true}));
-
 const limiter: RateLimitRequestHandler = rateLimit({
     windowMs: 3 * 60 * 1000,
-    max: 1000,
+    max: 300,
     standardHeaders: true,
     legacyHeaders: false,
     message: "Too many requests. Try again later"
@@ -45,7 +44,7 @@ app.use(limiter);
 
 
 
-app.use("/api", router);
+app.use("/api/v1", router);
 app.use((_req: Request, res: Response): void => {
     res.status(404).send("Not Found");
 })
