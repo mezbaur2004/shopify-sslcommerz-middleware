@@ -23,10 +23,10 @@ export const createSSLSession = async (order: any) => {
         currency: "BDT",
         tran_id: `${order.id}_${Date.now()}`,
 
-        success_url: `${envVars.BASE_URL}/api/payment/success`,
-        fail_url: `${envVars.BASE_URL}/api/payment/fail`,
-        cancel_url: `${envVars.BASE_URL}/api/payment/fail`,
-        ipn_url: `${envVars.BASE_URL}/api/payment/ipn`,
+        success_url: `${envVars.BASE_URL}/api/v1/payment/success`,
+        fail_url: `${envVars.BASE_URL}/api/v1/payment/fail`,
+        cancel_url: `${envVars.BASE_URL}/api/v1/payment/fail`,
+        ipn_url: `${envVars.BASE_URL}/api/v1/payment/ipn`,
 
         cus_name: order.customer?.first_name || "Customer",
         cus_email: order.email || "noemail@example.com",

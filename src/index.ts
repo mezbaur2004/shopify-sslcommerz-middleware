@@ -2,11 +2,11 @@ import app from "./app";
 import {connectDB} from "./db";
 import mongoose from "mongoose";
 
-// import * as dns from "node:dns";
-// let prevDNS=dns.getServers()
-// dns.setServers(["8.8.8.8", "8.8.4.4"]);
-// let newDNS=dns.getServers();
-// console.log(`DNS ${prevDNS} is set to ${newDNS}`);
+import * as dns from "node:dns";
+let prevDNS=dns.getServers()
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+let newDNS=dns.getServers();
+console.log(`DNS ${prevDNS} is set to ${newDNS}`);
 
 import { Server } from "http";
 import {envVars} from "./config/envVariable.config";

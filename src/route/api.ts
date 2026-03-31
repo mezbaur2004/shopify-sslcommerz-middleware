@@ -4,7 +4,8 @@ import {
     createPayment,
     paymentIPN,
     paymentSuccess,
-    paymentFail
+    paymentFail,
+    initPaymentFromCart
 } from "../controller/payment.controller";
 
 const router:Router=express.Router();
@@ -13,13 +14,8 @@ router.get("/",(_req:Request,res:Response)=>{
     res.json("API is working!")
 })
 
-// router.post("/test-sanitize",(req:Request,res:Response)=>{
-//     res.json(req.body);
-// })
-
-
 //payment gateway routes
-
+router.post("/payment/init", initPaymentFromCart);
 router.post("/pay/:orderId", createPayment);
 
 // NO rate limit here ideally (separate router if needed)

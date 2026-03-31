@@ -3,10 +3,10 @@ import { envVars } from "../config/envVariable.config";
 
 const SHOP = envVars.SHOPIFY_STORE;
 const TOKEN = envVars.SHOPIFY_ADMIN_TOKEN;
-const API_VERSION = envVars.SHOPIFY_API_VERSION || "2025-01";
+const API_VERSION = envVars.SHOPIFY_API_VERSION || "2026-01";
 
 // shared axios config
-const shopifyClient = axios.create({
+export const shopifyClient = axios.create({
     baseURL: `https://${SHOP}/admin/api/${API_VERSION}`,
     headers: {
         "X-Shopify-Access-Token": TOKEN,
@@ -15,7 +15,10 @@ const shopifyClient = axios.create({
     timeout: 10000
 });
 
-// Get order
+
+// =======================
+// GET ORDER
+// =======================
 export const getOrder = async (orderId: string) => {
     if (!/^\d+$/.test(orderId)) {
         throw new Error("Invalid orderId format");
@@ -30,7 +33,10 @@ export const getOrder = async (orderId: string) => {
     }
 };
 
-// Mark order paid
+
+// =======================
+// MARK ORDER AS PAID
+// =======================
 export const markOrderPaid = async (orderId: string, data: any, order: any) => {
     if (!order) throw new Error("Order required for validation");
 
@@ -42,24 +48,66 @@ export const markOrderPaid = async (orderId: string, data: any, order: any) => {
         throw new Error("Amount mismatch");
     }
 
+    // idempotency check
     if (order.financial_status === "paid") {
-        return; // idempotent exit
+        return;
     }
 
     try {
-        // ✅ safer: create SALE transaction instead of capture
         await shopifyClient.post(`/orders/${orderId}/transactions.json`, {
             transaction: {
-                kind: "capture", // better for external gateway
+                kind: "capture",
                 status: "success",
                 amount: sslAmount.toFixed(2),
                 gateway: "sslcommerz",
                 source: "external"
             }
         });
-
     } catch (err: any) {
         console.error("MARK PAID ERROR:", err.response?.data || err.message);
         throw new Error("Failed to mark order as paid");
+    }
+};
+
+
+// =======================
+// ADJUST INVENTORY (MANUAL)
+// =======================
+export const adjustInventoryFromOrder = async (order: any) => {
+    const LOCATION_ID = envVars.SHOPIFY_LOCATION_ID;
+
+    if (!LOCATION_ID) {
+        throw new Error("Missing SHOPIFY_LOCATION_ID");
+    }
+
+    try {
+        for (const item of order.line_items) {
+
+            // skip if no variant
+            if (!item.variant_id) continue;
+
+            // 1. get variant → inventory_item_id
+            const variantRes = await shopifyClient.get(
+                `/variants/${item.variant_id}.json`
+            );
+
+            const variant = variantRes.data.variant;
+
+            // skip if inventory not tracked
+            if (!variant.inventory_management) continue;
+
+            const inventoryItemId = variant.inventory_item_id;
+
+            // 2. deduct stock
+            await shopifyClient.post(`/inventory_levels/adjust.json`, {
+                location_id: LOCATION_ID,
+                inventory_item_id: inventoryItemId,
+                available_adjustment: -item.quantity
+            });
+        }
+
+    } catch (err: any) {
+        console.error("INVENTORY UPDATE ERROR:", err.response?.data || err.message);
+        throw new Error("Failed to adjust inventory");
     }
 };
