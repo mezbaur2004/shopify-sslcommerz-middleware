@@ -36,6 +36,8 @@ app.use(express.urlencoded({limit: '1mb', extended: true}));
 
 app.use(helmet({
     contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginOpenerPolicy: { policy: "unsafe-none" }
 }));
 
 app.use(hpp());
