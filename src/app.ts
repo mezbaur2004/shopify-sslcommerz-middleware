@@ -11,18 +11,29 @@ import {envVars} from "./config/envVariable.config";
 const app: Application = express();
 
 //middleware
-app.use(cookieParser());
+const origins: string[] = envVars.ORIGINS?.split(",") ?? [];
 
-const origins: string[] =envVars.ORIGINS?.split(",") ?? [];
 const corsOptions = {
-    origin: origins,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: function (origin: any, callback: any) {
+        // allow server-to-server or curl (no origin)
+        if (!origin) return callback(null, true);
+
+        if (origins.includes(origin)) {
+            return callback(null, true);
+        } else {
+            return callback(new Error("Not allowed by CORS"));
+        }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false
-}
+};
+
 app.use(cors(corsOptions));
+app.options("*",cors(corsOptions));
 
 app.use(express.json());
-
+app.use(cookieParser());
 app.use(express.urlencoded({limit: '1mb', extended: true}));
 
 app.use(helmet({
