@@ -4,9 +4,56 @@ import { getOrder, markOrderPaid } from "../service/shopify.service";
 import { envVars } from "../config/envVariable.config";
 import PaymentModel from "../model/payments.model";
 
-export const initPaymentFromCart=async (req:Request, res:Response) => {
-    res.status(200).json({ data: { url: "test" } });
-}
+export const initPaymentFromCart = async (req: Request, res: Response) => {
+    try {
+        const { cartToken, amount, currency = "BDT", customerEmail } = req.body;
+
+        if (!cartToken) {
+            return res.status(400).json({ message: "cartToken is required" });
+        }
+
+        if (!amount || Number.isNaN(Number(amount))) {
+            return res.status(400).json({ message: "Valid amount is required" });
+        }
+
+        const paymentRef = `cart_${Date.now()}`;
+
+        await PaymentModel.findOneAndUpdate(
+            { cart_token: cartToken },
+            {
+                $set: {
+                    cart_token: cartToken,
+                    shopify_order_id: null,
+                    amount: Number(amount),
+                    currency,
+                    gateway: "sslcommerz",
+                    status: "pending",
+                    ipn_verified: false,
+                    transaction_id: paymentRef,
+                    customer_email: customerEmail ?? null,
+                    paid_at: null
+                }
+            },
+            { upsert: true, new: true }
+        );
+
+        const session = await createSSLSession({
+            amount: Number(amount),
+            currency,
+            transaction_id: paymentRef,
+            cart_token: cartToken
+        });
+
+        if (!session?.GatewayPageURL) {
+            return res.status(500).json({ message: "Payment init failed!" });
+        }
+
+        return res.json({ url: session.GatewayPageURL });
+    } catch (err: any) {
+        console.error("INIT PAYMENT ERROR:", err.message);
+        return res.status(500).json({ message: "Payment init failed" });
+    }
+};
 
 export const createPayment = async (req: Request, res: Response) => {
     try {
