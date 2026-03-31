@@ -11,23 +11,37 @@ import {envVars} from "./config/envVariable.config";
 const app: Application = express();
 
 //middleware
-const origins: string[] = envVars.ORIGINS?.split(",") ?? [];
-const corsOptions:CorsOptions = {
+// 1. Sanitize the ORIGINS string
+const origins: string[] = envVars.ORIGINS
+    ?.split(",")
+    .map(o => o.trim().replace(/\/$/, "")) ?? [];
+
+const corsOptions: CorsOptions = {
     origin: function (origin: any, callback: any) {
-        // allow server-to-server or curl (no origin)
+        // Allow IPN / Server-to-Server
         if (!origin) return callback(null, true);
 
-        if (origins.includes(origin)) {
+        const cleanOrigin = origin.replace(/\/$/, "");
+
+        // Match your list OR any SSLCommerz domain
+        if (origins.includes(cleanOrigin) || origin.includes("sslcommerz.com")) {
             return callback(null, true);
-        } else {
-            return callback(new Error("Not allowed by CORS"));
         }
+
+        // IMPORTANT: Use (null, false) instead of (new Error)
+        // This stops the server from crashing and just denies the origin.
+        return callback(null, false);
     },
+    methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false
 };
 
 app.use(cors(corsOptions));
+
+
+// Handle preflight for all routes
+app.options("*", cors(corsOptions));
 
 app.use(express.json());
 app.use(cookieParser());
