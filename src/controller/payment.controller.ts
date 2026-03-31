@@ -5,7 +5,7 @@ import { envVars } from "../config/envVariable.config";
 import PaymentModel from "../model/payments.model";
 
 export const initPaymentFromCart=async (req:Request, res:Response) => {
-    res.status(200).send({message:"Init Payment Route Working Server To Server"})
+    res.status(200).json({ data: { url: "test" } });
 }
 
 export const createPayment = async (req: Request, res: Response) => {
