@@ -5,7 +5,7 @@ import {
     paymentIPN,
     paymentSuccess,
     paymentFail,
-    initPaymentFromCart
+    initPaymentFromCart, redirectToSSL, redirectShopifyToSSL
 } from "../controller/payment.controller";
 
 const router:Router=express.Router();
@@ -17,6 +17,9 @@ router.get("/",(_req:Request,res:Response)=>{
 //payment gateway routes
 router.post("/payment/init", initPaymentFromCart);
 router.post("/pay/:orderId", createPayment);
+
+router.get("/payment/redirect/:paymentRef", redirectToSSL);
+router.get("/payment/shopify-redirect/:paymentRef", redirectShopifyToSSL);
 
 // NO rate limit here ideally (separate router if needed)
 router.post("/payment/ipn", paymentIPN);
