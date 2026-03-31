@@ -12,7 +12,6 @@ const app: Application = express();
 
 //middleware
 const origins: string[] = envVars.ORIGINS?.split(",") ?? [];
-
 const corsOptions:CorsOptions = {
     origin: function (origin: any, callback: any) {
         // allow server-to-server or curl (no origin)

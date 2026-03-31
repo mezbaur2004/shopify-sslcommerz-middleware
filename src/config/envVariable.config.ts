@@ -27,9 +27,9 @@ const loadEnvVariables = ():IEnvVariables=>{
     })
     return {
         PORT: process.env.PORT as string,
-        NODE_ENV:process.env.DB_URL as 'development' | 'production' | 'test',
+        NODE_ENV:process.env.NODE_ENV as 'development' | 'production' | 'test',
         DB_URL: process.env.DB_URL as string,
-        ORIGINS: process.env.CLIENT_SITE_URL as string,
+        ORIGINS: process.env.ORIGINS as string,
         SHOPIFY_STORE: process.env.SHOPIFY_STORE as string,
         SHOPIFY_ADMIN_TOKEN: process.env.SHOPIFY_ADMIN_TOKEN as string,
         SHOPIFY_API_VERSION: process.env.SHOPIFY_API_VERSION as string,
