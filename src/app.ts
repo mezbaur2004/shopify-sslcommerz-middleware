@@ -3,7 +3,7 @@ import router from "./route/api"
 import rateLimit, {RateLimitRequestHandler} from "express-rate-limit";
 import helmet from "helmet";
 import hpp from "hpp";
-import cors from "cors"
+import cors, { CorsOptions } from "cors";
 import cookieParser from "cookie-parser";
 import {sanitizeMiddleware} from "./middleware/sanitize";
 import {envVars} from "./config/envVariable.config";
@@ -13,7 +13,7 @@ const app: Application = express();
 //middleware
 const origins: string[] = envVars.ORIGINS?.split(",") ?? [];
 
-const corsOptions = {
+const corsOptions:CorsOptions = {
     origin: function (origin: any, callback: any) {
         // allow server-to-server or curl (no origin)
         if (!origin) return callback(null, true);
@@ -24,13 +24,11 @@ const corsOptions = {
             return callback(new Error("Not allowed by CORS"));
         }
     },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: false
 };
 
 app.use(cors(corsOptions));
-app.options(/.*/, cors(corsOptions));
 
 app.use(express.json());
 app.use(cookieParser());
