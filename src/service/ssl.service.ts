@@ -20,7 +20,7 @@ export const createSSLSession = async (order: any) => {
         store_id: envVars.SSL_STORE_ID,
         store_passwd: envVars.SSL_STORE_PASS,
 
-        total_amount: Number(order.amount).toFixed(2),
+        total_amount: (Number(order.amount)/100).toFixed(2),
         currency: order.currency || "BDT",
         tran_id: order.transaction_id,
 
