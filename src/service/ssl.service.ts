@@ -1,26 +1,38 @@
 import axios from "axios";
 import { envVars } from "../config/envVariable.config";
 
+// switch to live URL for production: https://securepay.sslcommerz.com
 const SSL_BASE = "https://sandbox.sslcommerz.com";
 
 const sslClient = axios.create({
     baseURL: SSL_BASE,
-    timeout: 20000 // increased from 10s (critical for production)
+    timeout: 20000
 });
 
-//
+// ─────────────────────────────────────────────
 // 1. CREATE SSL SESSION
-//
-export const createSSLSession = async (order: any) => {
+// ─────────────────────────────────────────────
+
+export const createSSLSession = async (order: {
+    amount: number;
+    currency: string;
+    transaction_id: string;
+    customer_name: string;
+    customer_email: string;
+    customer_phone?: string | null;
+    address?: string | null;
+    city?: string | null;
+    country?: string | null;
+}) => {
     if (!order?.transaction_id || !order?.amount) {
-        throw new Error("Invalid order data");
+        throw new Error("Invalid order data for SSL session");
     }
 
-    const payload = {
+    const payload: Record<string, string> = {
         store_id: envVars.SSL_STORE_ID,
         store_passwd: envVars.SSL_STORE_PASS,
 
-        total_amount: (Number(order.amount)/100).toFixed(2),
+        total_amount: order.amount.toFixed(2), // amount is already in BDT (e.g. 1500.00)
         currency: order.currency || "BDT",
         tran_id: order.transaction_id,
 
@@ -31,104 +43,91 @@ export const createSSLSession = async (order: any) => {
 
         cus_name: order.customer_name || "Customer",
         cus_email: order.customer_email || "noemail@example.com",
-        cus_phone: order.customer_phone || "0130000000",
-        cus_add1: "Bangladesh",
-        cus_city: "Dhaka",
-        cus_country: "Bangladesh",
+        cus_phone: order.customer_phone || "01300000000",
+        cus_add1: order.address || "Bangladesh",
+        cus_city: order.city || "Dhaka",
+        cus_country: order.country || "Bangladesh",
 
         shipping_method: "NO",
-        product_name: "Cart Order",
+        product_name: "Shopify Order",
         product_category: "general",
         product_profile: "general",
-        value_a: String(order.transaction_id)
+
+        // value_a carries our transactionId so IPN can look up the session
+        value_a: order.transaction_id
     };
 
     try {
         const params = new URLSearchParams();
-
-        Object.entries(payload).forEach(([key, value]) => {
-            if (value !== undefined && value !== null) {
-                params.append(key, String(value));
-            }
+        Object.entries(payload).forEach(([key, val]) => {
+            if (val !== undefined && val !== null) params.append(key, String(val));
         });
 
-        const res = await sslClient.post(
-            "/gwprocess/v4/api.php",
-            params,
-            {
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded"
-                }
-            }
-        );
+        const res = await sslClient.post("/gwprocess/v4/api.php", params, {
+            headers: { "Content-Type": "application/x-www-form-urlencoded" }
+        });
 
-        // IMPORTANT: don't assume only "SUCCESS"
-        if (!res.data) {
-            console.error("EMPTY SSL RESPONSE");
-            throw new Error("Empty SSL response");
-        }
+        if (!res.data) throw new Error("Empty SSL response");
 
         if (res.data.status !== "SUCCESS") {
             console.error("SSL INIT FAILED:", res.data);
-            throw new Error(res.data.failedreason || "SSL session failed");
+            throw new Error(res.data.failedreason || "SSL session init failed");
         }
 
-        return res.data;
-
+        return res.data; // contains GatewayPageURL
     } catch (err: any) {
         console.error("SSL CREATE ERROR:", err.response?.data || err.message);
         throw new Error("Failed to create SSL session");
     }
 };
 
-//
-// 2. VALIDATE PAYMENT (IPN)
-//
-export const validateSSLPayment = async (data: any, order: any) => {
+// ─────────────────────────────────────────────
+// 2. VALIDATE PAYMENT — called during IPN
+//    expectedAmount: the amount stored in PaymentSession (BDT float)
+// ─────────────────────────────────────────────
+
+export const validateSSLPayment = async (
+    data: any,
+    expectedAmount: number
+): Promise<boolean> => {
     if (!data?.val_id) {
-        throw new Error("Missing val_id");
+        console.error("SSL VALIDATE: missing val_id");
+        return false;
     }
 
     try {
-        const res = await sslClient.get(
-            "/validator/api/validationserverAPI.php",
-            {
-                params: {
-                    val_id: data.val_id,
-                    store_id: envVars.SSL_STORE_ID,
-                    store_passwd: envVars.SSL_STORE_PASS,
-                    v: 1,
-                    format: "json"
-                },
-                timeout: 20000
-            }
-        );
+        const res = await sslClient.get("/validator/api/validationserverAPI.php", {
+            params: {
+                val_id: data.val_id,
+                store_id: envVars.SSL_STORE_ID,
+                store_passwd: envVars.SSL_STORE_PASS,
+                v: 1,
+                format: "json"
+            },
+            timeout: 20000
+        });
 
         const v = res.data;
 
-        if (!v || v.status !== "VALID") {
+        if (!v || (v.status !== "VALID" && v.status !== "VALIDATED")) {
+            console.error("SSL VALIDATE: invalid status →", v?.status);
             return false;
         }
 
         const sslAmount = Number(v.amount);
-        const orderAmount = Number(order.total_price);
 
-        if (
-            v.currency !== "BDT" ||
-            !Number.isFinite(sslAmount) ||
-            sslAmount !== orderAmount
-        ) {
-            console.error("AMOUNT/CURRENCY MISMATCH:", v);
+        // Allow ±1 paisa tolerance for floating-point edge cases
+        if (!Number.isFinite(sslAmount) || Math.abs(sslAmount - expectedAmount) > 0.01) {
+            console.error("SSL VALIDATE: amount mismatch →", { sslAmount, expectedAmount });
             return false;
         }
 
         if (!v.tran_id || !v.bank_tran_id) {
-            console.error("MISSING TRANSACTION DATA:", v);
+            console.error("SSL VALIDATE: missing tran_id / bank_tran_id");
             return false;
         }
 
         return true;
-
     } catch (err: any) {
         console.error("SSL VALIDATION ERROR:", err.response?.data || err.message);
         return false;

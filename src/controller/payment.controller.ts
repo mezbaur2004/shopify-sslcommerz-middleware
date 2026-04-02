@@ -1,49 +1,138 @@
 import { Request, Response } from "express";
 import { createSSLSession, validateSSLPayment } from "../service/ssl.service";
-import { getOrder, markOrderPaid } from "../service/shopify.service";
+import {
+    createDraftOrder,
+    completeDraftOrder,
+    deleteDraftOrder
+} from "../service/shopify.service";
 import { envVars } from "../config/envVariable.config";
+import PaymentSessionModel from "../model/payment-session.model";
 import PaymentModel from "../model/payments.model";
+import PaymentEventModel from "../model/payment-events.model";
 
-//
-// 1. INIT PAYMENT (FAST - NO EXTERNAL CALLS)
-//
-export const initPaymentFromCart = async (req: Request, res: Response) => {
+const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+
+const logEvent = async (
+    referenceId: string,
+    referenceType: "draft_order" | "order",
+    eventType: string,
+    payload: object = {}
+) => {
     try {
-        const { cartToken, amount, currency = "BDT", customerEmail } = req.body;
+        await PaymentEventModel.create({ reference_id: referenceId, reference_type: referenceType, event_type: eventType, payload });
+    } catch (e: any) {
+        console.error("EVENT LOG ERROR:", e.message);
+    }
+};
 
-        if (!cartToken) {
-            return res.status(400).json({ message: "cartToken is required" });
+// ─────────────────────────────────────────────
+// 1. INIT PAYMENT
+//    - Receives full checkout form data
+//    - Creates a Shopify Draft Order
+//    - Stores PaymentSession
+//    - Returns redirect URL to SSL gateway
+// ─────────────────────────────────────────────
+
+export const initPayment = async (req: Request, res: Response) => {
+    try {
+        const { lineItems, customer, shippingAddress, note } = req.body;
+
+        // ── Validation ──────────────────────────────────────────────────
+        if (!Array.isArray(lineItems) || lineItems.length === 0) {
+            return res.status(400).json({ message: "lineItems[] is required" });
         }
 
-        if (!amount || Number.isNaN(Number(amount))) {
-            return res.status(400).json({ message: "Valid amount is required" });
+        for (const item of lineItems) {
+            if (!item.variant_id || !item.quantity || item.quantity < 1) {
+                return res.status(400).json({
+                    message: "Each lineItem must have variant_id and quantity ≥ 1"
+                });
+            }
         }
 
-        const paymentRef = `cart_${Date.now()}`;
+        if (!customer?.name?.trim() || !customer?.email?.trim()) {
+            return res.status(400).json({ message: "customer.name and customer.email are required" });
+        }
 
-        await PaymentModel.findOneAndUpdate(
-            { cart_token: cartToken },
-            {
-                $set: {
-                    cart_token: cartToken,
-                    shopify_order_id: null,
-                    amount: Number(amount),
-                    currency,
-                    gateway: "sslcommerz",
-                    status: "pending",
-                    ipn_verified: false,
-                    transaction_id: paymentRef,
-                    customer_email: customerEmail ?? null,
-                    paid_at: null
-                }
+        if (
+            !shippingAddress?.address1?.trim() ||
+            !shippingAddress?.city?.trim() ||
+            !shippingAddress?.country?.trim()
+        ) {
+            return res.status(400).json({
+                message: "shippingAddress.address1, .city, and .country are required"
+            });
+        }
+
+        // ── Create Shopify Draft Order ───────────────────────────────────
+        const draftOrder = await createDraftOrder({
+            lineItems,
+            customer,
+            shippingAddress,
+            note: note || null
+        });
+
+        const draftOrderId = String(draftOrder.id);
+        const amount = parseFloat(draftOrder.total_price); // e.g. 1500.00 BDT
+        const currency: string = draftOrder.currency || "BDT";
+
+        if (isNaN(amount) || amount <= 0) {
+            await deleteDraftOrder(draftOrderId).catch(console.error);
+            return res.status(400).json({ message: "Invalid order total from Shopify" });
+        }
+
+        // ── Create PaymentSession ────────────────────────────────────────
+        const transactionId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+        const cartToken = `cart_${draftOrderId}_${Date.now()}`;
+        const expiryTime = new Date(Date.now() + SESSION_TTL_MS);
+
+        await PaymentSessionModel.create({
+            cartToken,
+            draftOrderId,
+            transactionId,
+            status: "pending",
+            amount,
+            currency,
+            expiryTime,
+            customer: {
+                name: customer.name.trim(),
+                email: customer.email.trim().toLowerCase(),
+                phone: customer.phone || null
             },
-            { upsert: true, new: true }
-        );
+            shippingAddress: {
+                address1: shippingAddress.address1,
+                address2: shippingAddress.address2 || null,
+                city: shippingAddress.city,
+                province: shippingAddress.province || null,
+                country: shippingAddress.country,
+                zip: shippingAddress.zip || null
+            },
+            meta: {
+                ip: req.ip || null,
+                userAgent: req.headers["user-agent"] || null
+            }
+        });
 
-        // IMPORTANT: DO NOT CALL SSL HERE
-        return res.json({
+        await logEvent(draftOrderId, "draft_order", "created", {
+            draftOrderId,
+            transactionId,
+            amount,
+            currency,
+            expiresAt: expiryTime
+        });
+
+        return res.status(201).json({
             ok: true,
-            redirect: `/api/v1/payment/redirect/${paymentRef}`
+            draftOrderId,
+            transactionId,
+            amount,
+            currency,
+            expiresAt: expiryTime,
+            redirectUrl: `${envVars.BASE_URL}/api/v1/payment/redirect/${transactionId}`
         });
 
     } catch (err: any) {
@@ -52,203 +141,224 @@ export const initPaymentFromCart = async (req: Request, res: Response) => {
     }
 };
 
-//
-// 2. REDIRECT TO SSL (SLOW - SAFE PLACE FOR EXTERNAL CALL)
-//
+// ─────────────────────────────────────────────
+// 2. REDIRECT TO SSL GATEWAY
+//    - Browser hits this URL
+//    - Validates session is still alive
+//    - Creates SSL session → redirects to GatewayPageURL
+// ─────────────────────────────────────────────
+
 export const redirectToSSL = async (req: Request, res: Response) => {
     try {
-        const { paymentRef } = req.params;
+        const { transactionId } = req.params;
 
-        const payment = await PaymentModel.findOne({
-            transaction_id: paymentRef
-        });
+        const session = await PaymentSessionModel.findOne({ transactionId });
 
-        if (!payment) {
-            return res.status(404).send("Payment not found");
+        if (!session) {
+            return res.status(404).send("Payment session not found.");
         }
 
-        const session = await createSSLSession({
-            amount: payment.amount,
-            currency: payment.currency,
-            transaction_id: payment.transaction_id,
-            cart_token: payment.cart_token,
-            customer_email: payment.customer_email
-        });
-
-        if (!session?.GatewayPageURL) {
-            return res.status(500).send("SSL session failed");
+        // Already processed
+        if (session.status === "success") {
+            return res.redirect(`https://${envVars.SHOPIFY_STORE}/account/orders`);
         }
 
-        return res.redirect(session.GatewayPageURL);
+        // Expired or failed
+        if (session.status !== "pending") {
+            return res.status(410).send("This payment session has expired or been cancelled. Please place a new order.");
+        }
+
+        // Check TTL
+        if (new Date() > session.expiryTime) {
+            await PaymentSessionModel.updateOne({ transactionId }, { $set: { status: "expired" } });
+            await deleteDraftOrder(session.draftOrderId).catch(console.error);
+            await logEvent(session.draftOrderId, "draft_order", "expired", { reason: "TTL exceeded at redirect" });
+            return res.status(410).send("Your 15-minute payment window has expired. Please start a new checkout.");
+        }
+
+        // Create SSL gateway session
+        const sslSession = await createSSLSession({
+            amount: session.amount,
+            currency: session.currency,
+            transaction_id: session.transactionId,
+            customer_name: session.customer.name,
+            customer_email: session.customer.email,
+            customer_phone: session.customer.phone,
+            address: session.shippingAddress.address1,
+            city: session.shippingAddress.city,
+            country: session.shippingAddress.country
+        });
+
+        if (!sslSession?.GatewayPageURL) {
+            return res.status(500).send("Failed to open payment gateway. Please try again.");
+        }
+
+        await logEvent(session.draftOrderId, "draft_order", "redirected", {
+            transactionId,
+            amount: session.amount
+        });
+
+        return res.redirect(sslSession.GatewayPageURL);
 
     } catch (err: any) {
         console.error("SSL REDIRECT ERROR:", err.message);
-        return res.status(500).send("Payment redirect failed");
+        return res.status(500).send("Payment redirect failed.");
     }
 };
 
-//
-// 3. SHOPIFY ORDER PAYMENT (FIXED SAME ISSUE)
-//
-export const createPayment = async (req: Request, res: Response) => {
-    try {
-        const raw = req.params.orderId;
-        const orderId = Array.isArray(raw) ? raw[0] : raw;
+// ─────────────────────────────────────────────
+// 3. IPN — SSLCommerz server-to-server notification
+//    - Validates payment authenticity
+//    - Completes draft order → creates real Shopify order
+//    - Creates Payment record
+// ─────────────────────────────────────────────
 
-        if (!orderId || !/^\d+$/.test(orderId)) {
-            return res.status(400).json({ message: "Invalid orderId" });
-        }
-
-        const order = await getOrder(orderId);
-        if (!order) return res.status(404).json({ message: "Order not found" });
-
-        if (order.financial_status === "paid") {
-            return res.json({ message: "Already paid" });
-        }
-
-        const amount = Number(order.total_price);
-        if (Number.isNaN(amount)) {
-            return res.status(400).json({ message: "Invalid order amount" });
-        }
-
-        const paymentRef = `order_${orderId}_${Date.now()}`;
-
-        await PaymentModel.findOneAndUpdate(
-            { shopify_order_id: String(orderId) },
-            {
-                $set: {
-                    shopify_order_id: String(orderId),
-                    cart_token: null,
-                    amount,
-                    currency: order.currency || "BDT",
-                    gateway: "sslcommerz",
-                    status: "pending",
-                    ipn_verified: false,
-                    transaction_id: paymentRef,
-                    customer_email: order.email || null,
-                    paid_at: null
-                }
-            },
-            { upsert: true, new: true }
-        );
-
-        // IMPORTANT: DO NOT CALL SSL HERE
-        return res.json({
-            ok: true,
-            redirect: `/api/v1/payment/shopify-redirect/${paymentRef}`
-        });
-
-    } catch (err: any) {
-        console.error("CREATE PAYMENT ERROR:", err.message);
-        return res.status(500).json({ error: "Payment init failed" });
-    }
-};
-
-//
-// 4. SHOPIFY REDIRECT → SSL
-//
-export const redirectShopifyToSSL = async (req: Request, res: Response) => {
-    try {
-        const { paymentRef } = req.params;
-
-        const payment = await PaymentModel.findOne({
-            transaction_id: paymentRef
-        });
-
-        if (!payment) {
-            return res.status(404).send("Payment not found");
-        }
-
-        const session = await createSSLSession({
-            amount: payment.amount,
-            currency: payment.currency,
-            transaction_id: payment.transaction_id,
-            customer_email: payment.customer_email
-        });
-
-        if (!session?.GatewayPageURL) {
-            return res.status(500).send("SSL session failed");
-        }
-
-        return res.redirect(session.GatewayPageURL);
-
-    } catch (err: any) {
-        console.error("SHOPIFY SSL REDIRECT ERROR:", err.message);
-        return res.status(500).send("Payment redirect failed");
-    }
-};
-
-//
-// 5. IPN (KEEP AS IS - CORE LOGIC IS CORRECT)
-//
 export const paymentIPN = async (req: Request, res: Response) => {
     try {
         const data = req.body;
-        if (!data) return res.status(400).send("Invalid payload");
 
-        const raw = data.value_a;
-        const orderId = Array.isArray(raw) ? raw[0] : raw;
-
-        if (!orderId || !/^\d+$/.test(orderId)) {
-            return res.status(400).send("Invalid orderId");
+        if (!data || typeof data !== "object") {
+            return res.status(400).send("Invalid IPN payload");
         }
 
-        const payment = await PaymentModel.findOne({
-            shopify_order_id: String(orderId)
+        // value_a holds our transactionId (set during SSL session creation)
+        const transactionId: string = data.value_a;
+        if (!transactionId) {
+            return res.status(400).send("Missing transactionId in IPN");
+        }
+
+        const session = await PaymentSessionModel.findOne({ transactionId });
+        if (!session) {
+            return res.status(404).send("Session not found");
+        }
+
+        // ── Idempotency ──────────────────────────────────────────────────
+        if (session.status === "success") {
+            return res.send("OK"); // already processed
+        }
+
+        await logEvent(session.draftOrderId, "draft_order", "ipn_received", {
+            status: data.status,
+            tran_id: data.tran_id,
+            amount: data.amount
         });
 
-        if (!payment) return res.status(404).send("Payment record not found");
+        // ── Check TTL ────────────────────────────────────────────────────
+        if (new Date() > session.expiryTime) {
+            await PaymentSessionModel.updateOne({ transactionId }, { $set: { status: "expired" } });
+            await deleteDraftOrder(session.draftOrderId).catch(console.error);
+            await logEvent(session.draftOrderId, "draft_order", "expired", { reason: "TTL exceeded at IPN" });
+            return res.status(410).send("Session expired");
+        }
 
-        const order = await getOrder(orderId);
-        if (!order) return res.status(404).send("Order not found");
-
-        const isValid = await validateSSLPayment(data, order);
-        if (!isValid) {
-            await PaymentModel.updateOne(
-                { shopify_order_id: String(orderId) },
-                { $set: { status: "failed" } }
-            );
+        // ── Validate IPN status ──────────────────────────────────────────
+        if (data.status !== "VALID" && data.status !== "VALIDATED") {
+            await PaymentSessionModel.updateOne({ transactionId }, { $set: { status: "failed" } });
+            await deleteDraftOrder(session.draftOrderId).catch(console.error);
+            await logEvent(session.draftOrderId, "draft_order", "failed", {
+                reason: `IPN status was '${data.status}', not VALID`
+            });
             return res.status(400).send("Invalid payment");
         }
 
-        const sslAmount = parseFloat(data.amount);
-        if (sslAmount !== Number(payment.amount)) {
-            await PaymentModel.updateOne(
-                { shopify_order_id: String(orderId) },
-                { $set: { status: "failed" } }
-            );
-            return res.status(400).send("Amount mismatch");
+        // ── Server-side SSL validation (val_id check) ────────────────────
+        const isValid = await validateSSLPayment(data, session.amount);
+        if (!isValid) {
+            await PaymentSessionModel.updateOne({ transactionId }, { $set: { status: "failed" } });
+            await deleteDraftOrder(session.draftOrderId).catch(console.error);
+            await logEvent(session.draftOrderId, "draft_order", "failed", {
+                reason: "SSL server-side validation failed (amount mismatch or invalid val_id)"
+            });
+            return res.status(400).send("Validation failed");
         }
 
-        await markOrderPaid(orderId, data, order);
+        // ── Complete Draft Order → creates real Shopify Order ────────────
+        const completedDraft = await completeDraftOrder(session.draftOrderId);
+        const shopifyOrderId = String(completedDraft.order_id);
 
-        await PaymentModel.updateOne(
-            { shopify_order_id: String(orderId) },
-            {
-                $set: {
-                    status: "paid",
-                    transaction_id: data.tran_id,
-                    ipn_verified: true,
-                    paid_at: new Date()
-                }
-            }
-        );
+        // ── Save Payment record ──────────────────────────────────────────
+        await PaymentModel.create({
+            shopify_order_id: shopifyOrderId,
+            draft_order_id: session.draftOrderId,
+            cart_token: session.cartToken,
+            status: "paid",
+            amount: session.amount,
+            currency: session.currency,
+            gateway: "sslcommerz",
+            transaction_id: data.tran_id || transactionId,
+            customer_email: session.customer.email,
+            ipn_verified: true,
+            paid_at: new Date()
+        });
+
+        // ── Update session ───────────────────────────────────────────────
+        await PaymentSessionModel.updateOne({ transactionId }, { $set: { status: "success" } });
+
+        await logEvent(shopifyOrderId, "order", "completed", {
+            draftOrderId: session.draftOrderId,
+            shopifyOrderId,
+            tran_id: data.tran_id,
+            amount: session.amount
+        });
 
         return res.send("OK");
 
     } catch (err: any) {
         console.error("IPN ERROR:", err.message);
-        return res.status(500).send("Error");
+        return res.status(500).send("Internal error");
     }
 };
 
-//
-// 6. FINAL REDIRECTS
-//
-export const paymentSuccess = async (_req: Request, res: Response) => {
-    return res.redirect(`https://${envVars.SHOPIFY_STORE}/account/orders`);
+// ─────────────────────────────────────────────
+// 4. SUCCESS — browser redirect from SSLCommerz
+//    IPN already handled business logic.
+//    This is purely a UX redirect for the user.
+// ─────────────────────────────────────────────
+
+export const paymentSuccess = async (req: Request, res: Response) => {
+    try {
+        const transactionId: string = req.body?.value_a || req.query?.value_a as string;
+
+        if (transactionId) {
+            const session = await PaymentSessionModel.findOne({ transactionId }).lean();
+            if (session?.status === "success") {
+                return res.redirect(`https://${envVars.SHOPIFY_STORE}/account/orders`);
+            }
+
+            // IPN may not have arrived yet — show a pending page if you have one
+            // For now, still redirect to orders; the order will appear once IPN fires
+        }
+
+        return res.redirect(`https://${envVars.SHOPIFY_STORE}/account/orders`);
+    } catch {
+        return res.redirect(`https://${envVars.SHOPIFY_STORE}/account/orders`);
+    }
 };
 
-export const paymentFail = async (_req: Request, res: Response) => {
-    return res.redirect(`https://${envVars.SHOPIFY_STORE}/account/orders`);
+// ─────────────────────────────────────────────
+// 5. FAIL — browser redirect from SSLCommerz on failure / cancel
+//    Deletes the draft order so stock is not held.
+// ─────────────────────────────────────────────
+
+export const paymentFail = async (req: Request, res: Response) => {
+    try {
+        const transactionId: string = req.body?.value_a || req.query?.value_a as string;
+
+        if (transactionId) {
+            const session = await PaymentSessionModel.findOne({ transactionId });
+
+            if (session && session.status === "pending") {
+                await PaymentSessionModel.updateOne({ transactionId }, { $set: { status: "failed" } });
+                await deleteDraftOrder(session.draftOrderId).catch(console.error);
+                await logEvent(session.draftOrderId, "draft_order", "cancelled", {
+                    reason: "User cancelled or payment failed at gateway"
+                });
+            }
+        }
+    } catch (err: any) {
+        console.error("FAIL HANDLER ERROR:", err.message);
+    }
+
+    // Send user back to cart so they can retry
+    return res.redirect(`https://${envVars.SHOPIFY_STORE}/cart`);
 };

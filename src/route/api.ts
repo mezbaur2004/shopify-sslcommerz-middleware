@@ -1,28 +1,28 @@
-import express, {Router,Request,Response} from "express";
-
+import express, { Router, Request, Response } from "express";
 import {
-    createPayment,
+    initPayment,
+    redirectToSSL,
     paymentIPN,
     paymentSuccess,
-    paymentFail,
-    initPaymentFromCart, redirectToSSL, redirectShopifyToSSL
+    paymentFail
 } from "../controller/payment.controller";
 
-const router:Router=express.Router();
+const router: Router = express.Router();
 
-router.get("/",(_req:Request,res:Response)=>{
-    res.json("API is working!")
-})
+router.get("/", (_req: Request, res: Response) => {
+    res.json({ ok: true, message: "Payment API is running" });
+});
 
-//payment gateway routes
-router.post("/payment/init", initPaymentFromCart);
-router.post("/pay/:orderId", createPayment);
+// ── Checkout init: receives full form data, creates draft order ──────────
+router.post("/payment/init", initPayment);
 
-router.get("/payment/redirect/:paymentRef", redirectToSSL);
-router.get("/payment/shopify-redirect/:paymentRef", redirectShopifyToSSL);
+// ── Browser redirect: opens SSLCommerz gateway ──────────────────────────
+router.get("/payment/redirect/:transactionId", redirectToSSL);
 
-// NO rate limit here ideally (separate router if needed)
+// ── SSLCommerz server-to-server IPN (business logic lives here) ──────────
 router.post("/payment/ipn", paymentIPN);
+
+// ── Browser redirects after SSLCommerz gateway (UX only) ────────────────
 router.post("/payment/success", paymentSuccess);
 router.post("/payment/fail", paymentFail);
 

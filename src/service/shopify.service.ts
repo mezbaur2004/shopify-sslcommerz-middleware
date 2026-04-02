@@ -5,24 +5,149 @@ const SHOP = envVars.SHOPIFY_STORE;
 const TOKEN = envVars.SHOPIFY_ADMIN_TOKEN;
 const API_VERSION = envVars.SHOPIFY_API_VERSION || "2026-01";
 
-// shared axios config
 export const shopifyClient = axios.create({
     baseURL: `https://${SHOP}/admin/api/${API_VERSION}`,
     headers: {
         "X-Shopify-Access-Token": TOKEN,
         "Content-Type": "application/json"
     },
-    timeout: 10000
+    timeout: 15000
 });
 
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
 
-// =======================
-// GET ORDER
-// =======================
-export const getOrder = async (orderId: string) => {
-    if (!/^\d+$/.test(orderId)) {
-        throw new Error("Invalid orderId format");
+export interface LineItem {
+    variant_id: number;
+    quantity: number;
+}
+
+export interface CheckoutCustomer {
+    name: string;
+    email: string;
+    phone?: string | null;
+}
+
+export interface CheckoutAddress {
+    address1: string;
+    address2?: string | null;
+    city: string;
+    province?: string | null;
+    country: string;
+    zip?: string | null;
+}
+
+// ─────────────────────────────────────────────
+// 1. CREATE DRAFT ORDER
+// ─────────────────────────────────────────────
+
+export const createDraftOrder = async (params: {
+    lineItems: LineItem[];
+    customer: CheckoutCustomer;
+    shippingAddress: CheckoutAddress;
+    note?: string | null;
+}) => {
+    const { lineItems, customer, shippingAddress, note } = params;
+
+    const nameParts = customer.name.trim().split(/\s+/);
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(" ") || ".";
+
+    const addressPayload = {
+        first_name: firstName,
+        last_name: lastName,
+        phone: customer.phone || null,
+        address1: shippingAddress.address1,
+        address2: shippingAddress.address2 || null,
+        city: shippingAddress.city,
+        province: shippingAddress.province || null,
+        country: shippingAddress.country,
+        zip: shippingAddress.zip || null
+    };
+
+    try {
+        const res = await shopifyClient.post("/draft_orders.json", {
+            draft_order: {
+                line_items: lineItems.map((item) => ({
+                    variant_id: item.variant_id,
+                    quantity: item.quantity
+                })),
+                customer: {
+                    first_name: firstName,
+                    last_name: lastName,
+                    email: customer.email,
+                    phone: customer.phone || null
+                },
+                shipping_address: addressPayload,
+                billing_address: addressPayload,
+                note: note || null,
+                use_customer_default_address: false
+            }
+        });
+
+        return res.data.draft_order; // has .id, .total_price, .currency, .order_id etc.
+    } catch (err: any) {
+        console.error("CREATE DRAFT ORDER ERROR:", err.response?.data || err.message);
+        throw new Error("Failed to create draft order");
     }
+};
+
+// ─────────────────────────────────────────────
+// 2. GET DRAFT ORDER
+// ─────────────────────────────────────────────
+
+export const getDraftOrder = async (draftOrderId: string) => {
+    try {
+        const res = await shopifyClient.get(`/draft_orders/${draftOrderId}.json`);
+        return res.data.draft_order;
+    } catch (err: any) {
+        console.error("GET DRAFT ORDER ERROR:", err.response?.data || err.message);
+        throw new Error("Failed to fetch draft order");
+    }
+};
+
+// ─────────────────────────────────────────────
+// 3. COMPLETE DRAFT ORDER → becomes real paid Order
+// ─────────────────────────────────────────────
+
+export const completeDraftOrder = async (draftOrderId: string) => {
+    try {
+        // payment_pending: false → marks the resulting order as fully paid
+        const res = await shopifyClient.put(
+            `/draft_orders/${draftOrderId}/complete.json`,
+            { payment_pending: false }
+        );
+
+        // res.data.draft_order.order_id is the newly created Shopify order ID
+        return res.data.draft_order;
+    } catch (err: any) {
+        console.error("COMPLETE DRAFT ORDER ERROR:", err.response?.data || err.message);
+        throw new Error("Failed to complete draft order");
+    }
+};
+
+// ─────────────────────────────────────────────
+// 4. DELETE DRAFT ORDER (on fail / timeout)
+// ─────────────────────────────────────────────
+
+export const deleteDraftOrder = async (draftOrderId: string): Promise<boolean> => {
+    try {
+        await shopifyClient.delete(`/draft_orders/${draftOrderId}.json`);
+        return true;
+    } catch (err: any) {
+        if (err.response?.status === 404) return true; // already gone — that's fine
+        console.error("DELETE DRAFT ORDER ERROR:", err.response?.data || err.message);
+        throw new Error("Failed to delete draft order");
+    }
+};
+
+// ─────────────────────────────────────────────
+// 5. GET ORDER (after completion)
+// ─────────────────────────────────────────────
+
+export const getOrder = async (orderId: string) => {
+    if (!/^\d+$/.test(orderId)) throw new Error("Invalid orderId format");
 
     try {
         const res = await shopifyClient.get(`/orders/${orderId}.json`);
@@ -30,84 +155,5 @@ export const getOrder = async (orderId: string) => {
     } catch (err: any) {
         console.error("GET ORDER ERROR:", err.response?.data || err.message);
         throw new Error("Failed to fetch order");
-    }
-};
-
-
-// =======================
-// MARK ORDER AS PAID
-// =======================
-export const markOrderPaid = async (orderId: string, data: any, order: any) => {
-    if (!order) throw new Error("Order required for validation");
-
-    const sslAmount = parseFloat(data.amount);
-    const shopifyAmount = parseFloat(order.total_price);
-
-    // 🔒 strict validation
-    if (isNaN(sslAmount) || sslAmount !== shopifyAmount) {
-        throw new Error("Amount mismatch");
-    }
-
-    // idempotency check
-    if (order.financial_status === "paid") {
-        return;
-    }
-
-    try {
-        await shopifyClient.post(`/orders/${orderId}/transactions.json`, {
-            transaction: {
-                kind: "capture",
-                status: "success",
-                amount: sslAmount.toFixed(2),
-                gateway: "sslcommerz",
-                source: "external"
-            }
-        });
-    } catch (err: any) {
-        console.error("MARK PAID ERROR:", err.response?.data || err.message);
-        throw new Error("Failed to mark order as paid");
-    }
-};
-
-
-// =======================
-// ADJUST INVENTORY (MANUAL)
-// =======================
-export const adjustInventoryFromOrder = async (order: any) => {
-    const LOCATION_ID = envVars.SHOPIFY_LOCATION_ID;
-
-    if (!LOCATION_ID) {
-        throw new Error("Missing SHOPIFY_LOCATION_ID");
-    }
-
-    try {
-        for (const item of order.line_items) {
-
-            // skip if no variant
-            if (!item.variant_id) continue;
-
-            // 1. get variant → inventory_item_id
-            const variantRes = await shopifyClient.get(
-                `/variants/${item.variant_id}.json`
-            );
-
-            const variant = variantRes.data.variant;
-
-            // skip if inventory not tracked
-            if (!variant.inventory_management) continue;
-
-            const inventoryItemId = variant.inventory_item_id;
-
-            // 2. deduct stock
-            await shopifyClient.post(`/inventory_levels/adjust.json`, {
-                location_id: LOCATION_ID,
-                inventory_item_id: inventoryItemId,
-                available_adjustment: -item.quantity
-            });
-        }
-
-    } catch (err: any) {
-        console.error("INVENTORY UPDATE ERROR:", err.response?.data || err.message);
-        throw new Error("Failed to adjust inventory");
     }
 };

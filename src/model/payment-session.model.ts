@@ -7,18 +7,20 @@ const PaymentSessionSchema = new Schema(
         cartToken: {
             type: String,
             required: true,
+            unique: true,
             index: true
         },
 
         draftOrderId: {
             type: String,
-            default: null,
+            required: true,
             index: true
         },
 
         transactionId: {
             type: String,
-            default: null,
+            required: true,
+            unique: true,
             index: true
         },
 
@@ -46,60 +48,23 @@ const PaymentSessionSchema = new Schema(
         },
 
         customer: {
-            name: {
-                type: String,
-                required: true
-            },
-
-            email: {
-                type: String,
-                required: true,
-                index: true
-            },
-
-            phone: {
-                type: String,
-                default: null
-            }
+            name: { type: String, required: true },
+            email: { type: String, required: true, index: true },
+            phone: { type: String, default: null }
         },
 
         shippingAddress: {
-            address1: {
-                type: String,
-                required: true
-            },
-
-            address2: {
-                type: String,
-                default: null
-            },
-
-            city: {
-                type: String,
-                required: true
-            },
-
-            country: {
-                type: String,
-                required: true
-            },
-
-            postalCode: {
-                type: String,
-                default: null
-            }
+            address1: { type: String, required: true },
+            address2: { type: String, default: null },
+            city: { type: String, required: true },
+            province: { type: String, default: null },
+            country: { type: String, required: true },
+            zip: { type: String, default: null }
         },
 
         meta: {
-            ip: {
-                type: String,
-                default: null
-            },
-
-            userAgent: {
-                type: String,
-                default: null
-            }
+            ip: { type: String, default: null },
+            userAgent: { type: String, default: null }
         }
     },
     {
@@ -108,9 +73,5 @@ const PaymentSessionSchema = new Schema(
     }
 );
 
-const PaymentSessionModel = mongoose.model(
-    "paymentsessions",
-    PaymentSessionSchema
-);
-
-export default PaymentSessionModel
+const PaymentSessionModel = mongoose.model("payment_sessions", PaymentSessionSchema);
+export default PaymentSessionModel;
