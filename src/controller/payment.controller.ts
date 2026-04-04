@@ -193,7 +193,7 @@ export const redirectToSSL = async (req: Request, res: Response) => {
         // Already successfully paid
         if (session.status === "success") {
             return res.redirect(
-                `https://${envVars.SHOPIFY_STORE}/account/orders`
+                `https://${envVars.SHOPIFY_STORE}/pages/payment-success`
             );
         }
 
