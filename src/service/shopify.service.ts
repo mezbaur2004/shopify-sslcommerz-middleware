@@ -46,6 +46,10 @@ export const createDraftOrder = async (params: {
     lineItems: LineItem[];
     customer: CheckoutCustomer;
     shippingAddress: CheckoutAddress;
+    shippingLine?: {
+        title: string;
+        price: string;
+    };
     note?: string | null;
 }) => {
     const { lineItems, customer, shippingAddress, note } = params;

@@ -119,7 +119,7 @@ export const initPayment = async (req: Request, res: Response) => {
         // ── Create PaymentSession ────────────────────────────────────────
         const transactionId = `txn_${Date.now()}_${Math.random()
             .toString(36)
-            .substr(2, 8)}`;
+            .slice(2, 8)}`;
         const cartToken = `cart_${draftOrderId}_${Date.now()}`;
         const expiryTime = new Date(Date.now() + SESSION_TTL_MS);
 
