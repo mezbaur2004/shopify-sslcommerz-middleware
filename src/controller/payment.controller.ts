@@ -398,7 +398,7 @@ export const paymentSuccess = async (req: Request, res: Response) => {
 
             if (session?.status === "success") {
                 return res.redirect(
-                    `https://${envVars.SHOPIFY_STORE}/account/orders`
+                    `https://${envVars.SHOPIFY_STORE}/pages/payment-success`
                 );
             }
 
@@ -407,11 +407,11 @@ export const paymentSuccess = async (req: Request, res: Response) => {
         }
 
         return res.redirect(
-            `https://${envVars.SHOPIFY_STORE}/account/orders`
+            `https://${envVars.SHOPIFY_STORE}/pages/payment-success`
         );
     } catch {
         return res.redirect(
-            `https://${envVars.SHOPIFY_STORE}/account/orders`
+            `https://${envVars.SHOPIFY_STORE}pages/payment-success`
         );
     }
 };
@@ -448,5 +448,5 @@ export const paymentFail = async (req: Request, res: Response) => {
     }
 
     // Send user back to cart so they can retry
-    return res.redirect(`https://${envVars.SHOPIFY_STORE}/cart`);
+    return res.redirect(`https://${envVars.SHOPIFY_STORE}/pages/payment-failed`);
 };
