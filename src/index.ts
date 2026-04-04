@@ -5,6 +5,7 @@ import { Server } from "http";
 import {envVars} from "./config/envVariable.config";
 let server: Server;
 
+
 const PORT:number=Number(envVars.PORT);
 
 const startServer=async () => {
