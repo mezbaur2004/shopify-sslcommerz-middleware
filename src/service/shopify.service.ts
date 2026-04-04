@@ -52,7 +52,7 @@ export const createDraftOrder = async (params: {
     };
     note?: string | null;
 }) => {
-    const { lineItems, customer, shippingAddress, note } = params;
+    const { lineItems, customer, shippingAddress, shippingLine, note } = params;
 
     const nameParts = customer.name.trim().split(/\s+/);
     const firstName = nameParts[0];
@@ -85,6 +85,14 @@ export const createDraftOrder = async (params: {
                 },
                 shipping_address: addressPayload,
                 billing_address: addressPayload,
+
+                ...(shippingLine && {
+                    shipping_line: {
+                        title: shippingLine.title,
+                        price: Number(shippingLine.price).toFixed(2)
+                    }
+                }),
+
                 note: note || null,
                 use_customer_default_address: false
             }
