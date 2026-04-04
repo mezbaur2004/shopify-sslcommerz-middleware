@@ -44,7 +44,7 @@ const logEvent = async (
 
 export const initPayment = async (req: Request, res: Response) => {
     try {
-        const { lineItems, customer, shippingAddress, note } = req.body;
+        const { lineItems, customer, shippingAddress, shippingMethod, note } = req.body;
 
         // ── Validation ──────────────────────────────────────────────────
         if (!Array.isArray(lineItems) || lineItems.length === 0) {
@@ -75,11 +75,33 @@ export const initPayment = async (req: Request, res: Response) => {
             });
         }
 
+        let shippingLine: { title: string; price: string };
+
+        if (shippingMethod === "free") {
+            shippingLine = {
+                title: "Training Program",
+                price: "0"
+            };
+        } else if (shippingMethod === "inside") {
+            shippingLine = {
+                title: "Inside Dhaka",
+                price: "60"
+            };
+        } else if (shippingMethod === "outside") {
+            shippingLine = {
+                title: "Outside Dhaka",
+                price: "130"
+            };
+        } else {
+            return res.status(400).json({ message: "Invalid shipping method" });
+        }
+
         // ── Create Shopify Draft Order ───────────────────────────────────
         const draftOrder = await createDraftOrder({
             lineItems,
             customer,
             shippingAddress,
+            shippingLine,
             note: note || null
         });
 
