@@ -6,7 +6,7 @@ const SSL_BASE = "https://sandbox.sslcommerz.com";
 
 const sslClient = axios.create({
     baseURL: SSL_BASE,
-    timeout: 20000
+    timeout: 15000
 });
 
 // ─────────────────────────────────────────────
@@ -88,7 +88,8 @@ export const createSSLSession = async (order: {
 
 export const validateSSLPayment = async (
     data: any,
-    expectedAmount: number
+    expectedAmount: number,
+    expectedTransactionId: string,
 ): Promise<boolean> => {
     if (!data?.val_id) {
         console.error("SSL VALIDATE: missing val_id");
@@ -126,6 +127,15 @@ export const validateSSLPayment = async (
             console.error("SSL VALIDATE: missing tran_id / bank_tran_id");
             return false;
         }
+
+        if (v.tran_id !== expectedTransactionId) {
+            console.error("SSL VALIDATE: tran_id mismatch →", {
+                sslTranId: v.tran_id,
+                expectedTransactionId
+            });
+            return false;
+        }
+
 
         return true;
     } catch (err: any) {

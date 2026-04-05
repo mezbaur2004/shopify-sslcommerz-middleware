@@ -3,6 +3,16 @@ import {connectDB} from "./db";
 import mongoose from "mongoose";
 import { Server } from "http";
 import {envVars} from "./config/envVariable.config";
+import * as dns from "node:dns";
+
+if(envVars.NODE_ENV === "development") {
+    let prevDNS=dns.getServers()
+    dns.setServers(["8.8.8.8", "8.8.4.4"]);
+    let newDNS=dns.getServers();
+    console.log(`DNS ${prevDNS} is set to ${newDNS}`);
+
+}
+
 let server: Server;
 
 

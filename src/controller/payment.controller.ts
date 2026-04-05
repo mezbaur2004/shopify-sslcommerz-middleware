@@ -310,6 +310,17 @@ export const paymentIPN = async (req: Request, res: Response) => {
         }
 
         // ── Validate IPN status ──────────────────────────────────────────
+
+        if (data.tran_id !== session.transactionId) {
+            await logEvent(session.draftOrderId, "draft_order", "failed", {
+                reason: "Incoming tran_id mismatch before validation",
+                received: data.tran_id,
+                expected: session.transactionId
+            });
+
+            return res.status(400).send("Invalid transaction mapping");
+        }
+
         if (data.status !== "VALID" && data.status !== "VALIDATED") {
             await PaymentSessionModel.updateOne(
                 { transactionId },
@@ -323,7 +334,7 @@ export const paymentIPN = async (req: Request, res: Response) => {
         }
 
         // ── Server-side SSL validation (val_id check) ────────────────────
-        const isValid = await validateSSLPayment(data, session.amount);
+        const isValid = await validateSSLPayment(data, session.amount, session.transactionId);
         if (!isValid) {
             await PaymentSessionModel.updateOne(
                 { transactionId },

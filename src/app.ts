@@ -11,6 +11,13 @@ import {envVars} from "./config/envVariable.config";
 const app: Application = express();
 
 //middleware
+
+if (!envVars.SSL_IPS) {
+    throw new Error("SSL_IPS env variable is required");
+}
+
+const SSL_IPS = envVars.SSL_IPS.split(",");
+
 // 1. Sanitize the ORIGINS string
 const origins: string[] = envVars.ORIGINS
     ?.split(",")
@@ -67,7 +74,7 @@ const limiter: RateLimitRequestHandler = rateLimit({
 app.use(limiter);
 
 
-
+app.set("trust proxy", true);
 app.use("/api/v1", router);
 app.use((_req: Request, res: Response): void => {
     res.status(404).send("Not Found");
