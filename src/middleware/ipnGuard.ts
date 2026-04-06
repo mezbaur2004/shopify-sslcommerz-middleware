@@ -32,7 +32,7 @@ export const onlyIpWhiteListed = async (
     }
 
     if (!cleanIP || !SSL_IPS.includes(cleanIP)) {
-        console.warn("Blocked IPN request from:", cleanIP);
+        console.log("Blocked IPN request from:", cleanIP);
         return res.status(403).send("Forbidden");
     }
 
