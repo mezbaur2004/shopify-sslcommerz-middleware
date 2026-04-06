@@ -21,7 +21,7 @@ router.post("/payment/init", initPayment);
 router.get("/payment/redirect/:transactionId", redirectToSSL);
 
 // ── SSLCommerz server-to-server IPN (business logic lives here) ──────────
-router.post("/payment/ipn",onlyIpWhiteListed, paymentIPN);
+router.post("/payment/ipn", paymentIPN);
 
 // ── Browser redirects after SSLCommerz gateway (UX only) ────────────────
 router.all("/payment/success", paymentSuccess);
