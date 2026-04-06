@@ -36,6 +36,12 @@ export const createSSLSession = async (order: {
         currency: order.currency || "BDT",
         tran_id: order.transaction_id,
 
+        value_a:"JOLLY_PHONICS_BANGLADESH", // Hardcoded identifier for this specific app
+        value_b: order.transaction_id,      // Move your internal lookup ID here
+        value_c: "PHYSICAL_BOOKS",          // Category for the accountant
+        value_d: order.customer_email || "noemail@example.com",
+
+
         success_url: `${envVars.BASE_URL}/api/v1/payment/success`,
         fail_url: `${envVars.BASE_URL}/api/v1/payment/fail`,
         cancel_url: `${envVars.BASE_URL}/api/v1/payment/fail`,
@@ -49,12 +55,10 @@ export const createSSLSession = async (order: {
         cus_country: order.country || "Bangladesh",
 
         shipping_method: "NO",
-        product_name: "Shopify Order",
-        product_category: "general",
+        product_name: "Educational Books & Training",
+        product_category: "JP_books/training",
         product_profile: "general",
 
-        // value_a carries our transactionId so IPN can look up the session
-        value_a: order.transaction_id
     };
 
     try {

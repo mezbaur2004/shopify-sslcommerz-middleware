@@ -117,7 +117,7 @@ export const initPayment = async (req: Request, res: Response) => {
         }
 
         // ── Create PaymentSession ────────────────────────────────────────
-        const transactionId = `txn_${Date.now()}_${Math.random()
+        const transactionId = `JP_${Date.now()}_${Math.random()
             .toString(36)
             .slice(2, 8)}`;
         const cartToken = `cart_${draftOrderId}_${Date.now()}`;
