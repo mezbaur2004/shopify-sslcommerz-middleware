@@ -24,7 +24,7 @@ router.get("/payment/redirect/:transactionId", redirectToSSL);
 router.post("/payment/ipn",onlyIpWhiteListed, paymentIPN);
 
 // ── Browser redirects after SSLCommerz gateway (UX only) ────────────────
-router.post("/payment/success", paymentSuccess);
-router.post("/payment/fail", paymentFail);
+router.all("/payment/success",onlyIpWhiteListed, paymentSuccess);
+router.all("/payment/fail",onlyIpWhiteListed, paymentFail);
 
 export default router;

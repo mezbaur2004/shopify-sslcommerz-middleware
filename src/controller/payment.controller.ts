@@ -10,7 +10,7 @@ import PaymentSessionModel from "../model/payment-session.model";
 import PaymentModel from "../model/payments.model";
 import PaymentEventModel from "../model/payment-events.model";
 
-const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const SESSION_TTL_MS = 20 * 60 * 1000; // 20 minutes
 
 // ─────────────────────────────────────────────
 // HELPERS

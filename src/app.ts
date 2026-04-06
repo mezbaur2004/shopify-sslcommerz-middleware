@@ -16,8 +16,6 @@ if (!envVars.SSL_IPS) {
     throw new Error("SSL_IPS env variable is required");
 }
 
-const SSL_IPS = envVars.SSL_IPS.split(",");
-
 // 1. Sanitize the ORIGINS string
 const origins: string[] = envVars.ORIGINS
     ?.split(",")
