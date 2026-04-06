@@ -275,7 +275,7 @@ export const paymentIPN = async (req: Request, res: Response) => {
         }
 
         // value_a holds our transactionId (set during SSL session creation)
-        const transactionId: string = data.value_a;
+        const transactionId: string = data.value_b;
         if (!transactionId) {
             return res.status(400).send("Missing transactionId in IPN");
         }
@@ -400,7 +400,7 @@ export const paymentIPN = async (req: Request, res: Response) => {
 export const paymentSuccess = async (req: Request, res: Response) => {
     try {
         const transactionId: string =
-            req.body?.value_a ?? (req.query?.value_a as string);
+            req.body?.value_b ?? (req.query?.value_b as string);
 
         if (transactionId) {
             const session = await PaymentSessionModel.findOne({
@@ -435,7 +435,7 @@ export const paymentSuccess = async (req: Request, res: Response) => {
 export const paymentFail = async (req: Request, res: Response) => {
     try {
         const transactionId: string =
-            req.body?.value_a ?? (req.query?.value_a as string);
+            req.body?.value_b ?? (req.query?.value_b as string);
 
         if (transactionId) {
             const session = await PaymentSessionModel.findOne({ transactionId });

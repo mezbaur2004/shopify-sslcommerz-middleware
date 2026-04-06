@@ -6,7 +6,7 @@ import {
     paymentSuccess,
     paymentFail
 } from "../controller/payment.controller";
-//import {onlyIpWhiteListed} from "../middleware/ipnGuard";
+import {onlyIpWhiteListed} from "../middleware/ipnGuard";
 
 const router: Router = express.Router();
 
@@ -21,7 +21,7 @@ router.post("/payment/init", initPayment);
 router.get("/payment/redirect/:transactionId", redirectToSSL);
 
 // ── SSLCommerz server-to-server IPN (business logic lives here) ──────────
-router.post("/payment/ipn", paymentIPN);
+router.post("/payment/ipn",onlyIpWhiteListed, paymentIPN);
 
 // ── Browser redirects after SSLCommerz gateway (UX only) ────────────────
 router.all("/payment/success", paymentSuccess);
