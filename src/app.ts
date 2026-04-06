@@ -71,18 +71,6 @@ const limiter: RateLimitRequestHandler = rateLimit({
 
     message: { error: "Too many requests. Try again later" },
 
-    keyGenerator: (req): string => {
-        const xff = req.headers["x-forwarded-for"];
-
-        const ip =
-            (typeof xff === "string" ? xff.split(",")[0] : undefined) ||
-            req.ip ||
-            req.socket.remoteAddress ||
-            "unknown";
-
-        return ip.trim();
-    },
-
     skip: (req) => req.path.includes("/ipn"),
     skipFailedRequests: true,
 });
