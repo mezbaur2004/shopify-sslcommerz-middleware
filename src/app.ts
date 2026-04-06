@@ -63,7 +63,7 @@ app.use(hpp());
 app.use(sanitizeMiddleware);
 
 const limiter: RateLimitRequestHandler = rateLimit({
-    windowMs: 3 * 60 * 1000, // 3 minutes
+    windowMs: 3 * 60 * 1000,
     max: 300,
 
     standardHeaders: true,
@@ -71,16 +71,19 @@ const limiter: RateLimitRequestHandler = rateLimit({
 
     message: { error: "Too many requests. Try again later" },
 
-    // Use correct IP (works with trust proxy = 1)
     keyGenerator: (req): string => {
-        return req.ip ?? req.socket.remoteAddress ?? "unknown";
-    },
-    // Do NOT rate limit IPN or server-to-server calls
-    skip: (req) => {
-        return req.path.includes("/ipn");
+        const xff = req.headers["x-forwarded-for"];
+
+        const ip =
+            (typeof xff === "string" ? xff.split(",")[0] : undefined) ||
+            req.ip ||
+            req.socket.remoteAddress ||
+            "unknown";
+
+        return ip.trim();
     },
 
-    // Only count successful-ish requests (optional but better)
+    skip: (req) => req.path.includes("/ipn"),
     skipFailedRequests: true,
 });
 
