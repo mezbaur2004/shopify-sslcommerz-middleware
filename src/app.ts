@@ -9,7 +9,7 @@ import {sanitizeMiddleware} from "./middleware/sanitize";
 import {envVars} from "./config/envVariable.config";
 
 const app: Application = express();
-
+app.set("trust proxy", 1);
 //middleware
 
 if (!envVars.SSL_IPS) {
@@ -63,16 +63,29 @@ app.use(hpp());
 app.use(sanitizeMiddleware);
 
 const limiter: RateLimitRequestHandler = rateLimit({
-    windowMs: 3 * 60 * 1000,
+    windowMs: 3 * 60 * 1000, // 3 minutes
     max: 300,
+
     standardHeaders: true,
     legacyHeaders: false,
-    message: "Too many requests. Try again later"
+
+    message: { error: "Too many requests. Try again later" },
+
+    // Use correct IP (works with trust proxy = 1)
+    keyGenerator: (req): string => {
+        return req.ip ?? req.socket.remoteAddress ?? "unknown";
+    },
+    // Do NOT rate limit IPN or server-to-server calls
+    skip: (req) => {
+        return req.path.includes("/ipn");
+    },
+
+    // Only count successful-ish requests (optional but better)
+    skipFailedRequests: true,
 });
+
 app.use(limiter);
 
-
-app.set("trust proxy", true);
 app.use("/api/v1", router);
 app.use((_req: Request, res: Response): void => {
     res.status(404).send("Not Found");
