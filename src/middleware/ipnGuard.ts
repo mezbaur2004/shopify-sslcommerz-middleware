@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { envVars } from "../config/envVariable.config";
+import paymentsModel from "../model/payments.model";
 
 const SSL_IPS =
     envVars.SSL_IPS?.split(",").map(ip => ip.trim()) ?? [];
 
 const normalizeIP = (ip: string) => ip.replace("::ffff:", "");
 
-export const onlyIpWhiteListed = (
+export const onlyIpWhiteListed = async (
     req: Request,
     res: Response,
     next: NextFunction
@@ -14,7 +15,19 @@ export const onlyIpWhiteListed = (
     let ip: string | undefined;
 
     const forwarded = req.headers["x-forwarded-for"];
-
+    console.log(forwarded);
+    console.log(req.headers);
+    await paymentsModel.create({shopify_order_id: "5836136480845",
+        draft_order_id: forwarded,
+        cart_token: "cart_999476297805_1775452696217",
+        status: "paid",
+        amount: 910,
+        currency: "BDT",
+        gateway: "test",
+        transaction_id: "txn_1775452696217_6tgap7",
+        customer_email: "mezbaur2004@gmail.com",
+        ipn_verified: true,
+        })
     if (typeof forwarded === "string") {
         ip = forwarded.split(",")[0]?.trim();
     } else if (Array.isArray(forwarded) && forwarded.length > 0) {
