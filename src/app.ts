@@ -9,7 +9,7 @@ import {sanitizeMiddleware} from "./middleware/sanitize";
 import {envVars} from "./config/envVariable.config";
 
 const app: Application = express();
-app.set("trust proxy", 1);
+// app.set("trust proxy", 1);
 //middleware
 
 if (!envVars.SSL_IPS) {
@@ -69,10 +69,7 @@ const limiter: RateLimitRequestHandler = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 
-    message: { error: "Too many requests. Try again later" },
-
-    skip: (req) => req.path.includes("/ipn"),
-    skipFailedRequests: true,
+    message: { error: "Too many requests. Try again later" }
 });
 
 app.use(limiter);

@@ -6,7 +6,7 @@ import {
     paymentSuccess,
     paymentFail
 } from "../controller/payment.controller";
-import {onlyIpWhiteListed} from "../middleware/ipnGuard";
+//import {onlyIpWhiteListed} from "../middleware/ipnGuard";
 
 const router: Router = express.Router();
 
