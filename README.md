@@ -1,4 +1,4 @@
-#  Shopify-Payment-Middleware-Backend
+#  Shopify-SSLCommerz-Middleware-Backend
 
 **Project:** Jolly Phonics Bangladesh  
 **Architecture:** Shopify Admin API + SSLCommerz Middleware (Node.js/TypeScript)  
