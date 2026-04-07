@@ -37,7 +37,7 @@ export const createSSLSession = async (order: {
         tran_id: order.transaction_id,
 
         value_a:"JOLLY_PHONICS_BANGLADESH", // Hardcoded identifier for this specific app
-        value_b: order.transaction_id,      // Move your internal lookup ID here
+        value_b: order.transaction_id,      // internal lookup ID here
         value_c: "PHYSICAL_BOOKS",          // Category for the accountant
         value_d: order.customer_email || "noemail@example.com",
 
