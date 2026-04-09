@@ -1,3 +1,5 @@
+//currently not using it. because render free tier sleeps after inactivity
+
 import PaymentSessionModel from "../model/payment-session.model";
 import PaymentEventModel from "../model/payment-events.model";
 import { deleteDraftOrder } from "../service/shopify.service";

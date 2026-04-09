@@ -63,8 +63,11 @@ export const createSSLSession = async (order: {
         shipping_method: "NO",
         num_of_item: 1,
         weight_of_items: "0.00",
+        logistic_pickup_id:"default",
+        logistic_delivery_type:"default",
+        
 
-        emi_option: 0, // Disable EMI by default
+        emi_option: 0, // Disabled EMI by default
         product_name: "Educational Books & Training",
         product_category: "JP_books/training",
         product_profile: "general",
