@@ -1,7 +1,6 @@
 import axios from "axios";
 import { envVars } from "../config/envVariable.config";
 
-// switch to live URL for production: https://securepay.sslcommerz.com
 let SSL_BASE;
     if(envVars.SSL_ENV==="securepay"){
         SSL_BASE="https://securepay.sslcommerz.com;"
@@ -65,7 +64,7 @@ export const createSSLSession = async (order: {
         weight_of_items: "0.00",
         logistic_pickup_id:"default",
         logistic_delivery_type:"default",
-        
+
 
         emi_option: 0, // Disabled EMI by default
         product_name: "Educational Books & Training",
