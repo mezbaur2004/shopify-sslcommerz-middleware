@@ -2,8 +2,12 @@ import axios from "axios";
 import { envVars } from "../config/envVariable.config";
 
 // switch to live URL for production: https://securepay.sslcommerz.com
-const SSL_BASE = "https://sandbox.sslcommerz.com";
-
+let SSL_BASE;
+    if(envVars.SSL_ENV==="securepay"){
+        SSL_BASE="https://securepay.sslcommerz.com;"
+    }else{
+        SSL_BASE="https://sandbox.sslcommerz.com";
+    }
 const sslClient = axios.create({
     baseURL: SSL_BASE,
     timeout: 15000
@@ -23,12 +27,13 @@ export const createSSLSession = async (order: {
     address?: string | null;
     city?: string | null;
     country?: string | null;
+    postcode?: string | null;
 }) => {
     if (!order?.transaction_id || !order?.amount) {
         throw new Error("Invalid order data for SSL session");
     }
 
-    const payload: Record<string, string> = {
+    const payload: Record<string, any> = {
         store_id: envVars.SSL_STORE_ID,
         store_passwd: envVars.SSL_STORE_PASS,
 
@@ -53,8 +58,13 @@ export const createSSLSession = async (order: {
         cus_add1: order.address || "Bangladesh",
         cus_city: order.city || "Dhaka",
         cus_country: order.country || "Bangladesh",
+        cus_postcode: order.postcode || "1209",
 
         shipping_method: "NO",
+        num_of_item: 1,
+        weight_of_items: "0.00",
+
+        emi_option: 0, // Disable EMI by default
         product_name: "Educational Books & Training",
         product_category: "JP_books/training",
         product_profile: "general",

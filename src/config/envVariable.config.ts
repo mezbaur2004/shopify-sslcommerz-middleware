@@ -13,11 +13,12 @@ interface IEnvVariables{
     SSL_STORE_PASS:string;
     BASE_URL:string;
     SSL_IPS:string;
+    SSL_ENV:string;
 }
 
 const loadEnvVariables = ():IEnvVariables=>{
     const requiredEnvVars=[
-        "PORT","NODE_ENV","DB_URL","ORIGINS","SHOPIFY_STORE","SHOPIFY_ADMIN_TOKEN","SHOPIFY_API_VERSION","SSL_STORE_ID","SSL_STORE_PASS","BASE_URL","SSL_IPS"
+        "PORT","NODE_ENV","DB_URL","ORIGINS","SHOPIFY_STORE","SHOPIFY_ADMIN_TOKEN","SHOPIFY_API_VERSION","SSL_STORE_ID","SSL_STORE_PASS","BASE_URL","SSL_IPS","SSL_ENV"
     ];
     requiredEnvVars.forEach((varName)=>{
         if(!process.env[varName]){
@@ -36,6 +37,7 @@ const loadEnvVariables = ():IEnvVariables=>{
         SSL_STORE_PASS: process.env.SSL_STORE_PASS as string,
         BASE_URL: process.env.BASE_URL as string,
         SSL_IPS: process.env.SSL_IPS as string,
+        SSL_ENV: process.env.SSL_ENV as string,
     }
 }
 
