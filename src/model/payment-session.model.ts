@@ -61,6 +61,10 @@ const PaymentSessionSchema = new Schema(
             country: { type: String, required: true },
             zip: { type: String, default: null }
         },
+        emailSent: {
+            type: Boolean,
+            default: false
+        },
 
         meta: {
             ip: { type: String, default: null },

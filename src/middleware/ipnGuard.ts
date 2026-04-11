@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import { envVars } from "../config/envVariable.config";
-import paymentsModel from "../model/payments.model";
 
 const SSL_IPS =
     envVars.SSL_IPS?.split(",").map(ip => ip.trim()) ?? [];

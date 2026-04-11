@@ -9,8 +9,9 @@ import { envVars } from "../config/envVariable.config";
 import PaymentSessionModel from "../model/payment-session.model";
 import PaymentModel from "../model/payments.model";
 import PaymentEventModel from "../model/payment-events.model";
+import {sendEmail} from "../service/mailservice";
 
-const SESSION_TTL_MS = 20 * 60 * 1000; // 20 minutes
+const SESSION_TTL_MS = 60 * 60 * 1000; // 60 minutes
 
 // ─────────────────────────────────────────────
 // HELPERS
@@ -383,6 +384,28 @@ export const paymentIPN = async (req: Request, res: Response) => {
             tran_id: data.tran_id,
             amount: session.amount
         });
+
+// ✅ SEND EMAIL (non-blocking + safe)
+        if (!session.emailSent) {
+            sendEmail(
+                session.customer.email,
+                "Payment Successful",
+                `
+        <h2>Payment Confirmed</h2>
+        <p>Your order has been successfully placed.</p>
+        <p><strong>Order ID:</strong> ${shopifyOrderId}</p>
+        <p><strong>Transaction ID:</strong> ${transactionId}</p>
+        <p>Amount: ${session.amount} ${session.currency}</p>
+        `
+            ).catch(err => {
+                console.error("Email failed:", err.message);
+            });
+
+            await PaymentSessionModel.updateOne(
+                { transactionId },
+                { $set: { emailSent: true } }
+            );
+        }
 
         return res.send("OK");
     } catch (err: any) {
