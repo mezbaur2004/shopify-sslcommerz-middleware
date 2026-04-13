@@ -386,8 +386,7 @@ export const paymentIPN = async (req: Request, res: Response) => {
         });
 
 // ✅ SEND EMAIL (non-blocking + safe)
-        console.log("test 1:",session.emailSent);
-        console.log("email", session.customer.email);
+
         if (!session.emailSent) {
             sendEmail(
                 session.customer.email,
@@ -399,14 +398,19 @@ export const paymentIPN = async (req: Request, res: Response) => {
         <p><strong>Transaction ID:</strong> ${transactionId}</p>
         <p>Amount: ${session.amount} ${session.currency}</p>
         `
-            ).catch(err => {
-                console.error("Email failed:", err.message);
-            });
-
-            await PaymentSessionModel.updateOne(
-                { transactionId },
-                { $set: { emailSent: true } }
-            );
+            )
+                .then(async () => {
+                    await PaymentSessionModel.updateOne(
+                        { transactionId },
+                        { $set: { emailSent: true } }
+                    );
+                })
+                .catch((err) => {
+                    console.log("EMAIL ERROR:", err);
+                    console.log(err.response);
+                    console.log(err.code);
+                    console.log(err.command);
+                });
         }
 
         return res.send("OK");
