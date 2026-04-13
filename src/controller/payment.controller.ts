@@ -266,41 +266,29 @@ export const redirectToSSL = async (req: Request, res: Response) => {
 //    - Completes draft order → creates real Shopify order
 //    - Creates Payment record
 // ─────────────────────────────────────────────
+
 export const paymentIPN = async (req: Request, res: Response) => {
     try {
-        console.log("[IPN] hit");
-        console.log("[IPN] body:", req.body);
-
         const data = req.body;
 
         if (!data || typeof data !== "object") {
-            console.log("[IPN] invalid payload");
             return res.status(400).send("Invalid IPN payload");
         }
 
+        // value_a holds our transactionId (set during SSL session creation)
         const transactionId: string = data.value_b;
-        console.log("[IPN] transactionId:", transactionId);
-
         if (!transactionId) {
-            console.log("[IPN] missing transactionId");
             return res.status(400).send("Missing transactionId in IPN");
         }
 
         const session = await PaymentSessionModel.findOne({ transactionId });
-        console.log("[IPN] session found:", !!session);
-
         if (!session) {
-            console.log("[IPN] session not found");
             return res.status(404).send("Session not found");
         }
 
-        console.log("[IPN] session status:", session.status);
-        console.log("[IPN] session emailSent:", session.emailSent);
-        console.log("[IPN] session expiryTime:", session.expiryTime);
-
+        // ── Idempotency ──────────────────────────────────────────────────
         if (session.status === "success") {
-            console.log("[IPN] already processed, returning OK");
-            return res.send("OK");
+            return res.send("OK"); // already processed
         }
 
         await logEvent(session.draftOrderId, "draft_order", "ipn_received", {
@@ -309,34 +297,22 @@ export const paymentIPN = async (req: Request, res: Response) => {
             amount: data.amount
         });
 
-        console.log("[IPN] logged ipn_received event");
-
+        // ── Check TTL ────────────────────────────────────────────────────
         if (new Date() > session.expiryTime) {
-            console.log("[IPN] session expired, cleaning up draft order");
-
             await PaymentSessionModel.updateOne(
                 { transactionId },
                 { $set: { status: "expired" } }
             );
-
-            await deleteDraftOrder(session.draftOrderId).catch((err) => {
-                console.error("[IPN] deleteDraftOrder error on expiry:", err);
-            });
-
+            await deleteDraftOrder(session.draftOrderId).catch(console.error);
             await logEvent(session.draftOrderId, "draft_order", "expired", {
                 reason: "TTL exceeded at IPN"
             });
-
-            console.log("[IPN] expired flow complete");
             return res.status(410).send("Session expired");
         }
 
-        if (data.tran_id !== session.transactionId) {
-            console.log("[IPN] tran_id mismatch", {
-                received: data.tran_id,
-                expected: session.transactionId
-            });
+        // ── Validate IPN status ──────────────────────────────────────────
 
+        if (data.tran_id !== session.transactionId) {
             await logEvent(session.draftOrderId, "draft_order", "failed", {
                 reason: "Incoming tran_id mismatch before validation",
                 received: data.tran_id,
@@ -347,63 +323,41 @@ export const paymentIPN = async (req: Request, res: Response) => {
         }
 
         if (data.status !== "VALID" && data.status !== "VALIDATED") {
-            console.log("[IPN] invalid gateway status:", data.status);
-
             await PaymentSessionModel.updateOne(
                 { transactionId },
                 { $set: { status: "failed" } }
             );
-
-            await deleteDraftOrder(session.draftOrderId).catch((err) => {
-                console.error("[IPN] deleteDraftOrder error on invalid status:", err);
-            });
-
+            await deleteDraftOrder(session.draftOrderId).catch(console.error);
             await logEvent(session.draftOrderId, "draft_order", "failed", {
                 reason: `IPN status was '${data.status}', not VALID`
             });
-
             return res.status(400).send("Invalid payment");
         }
 
-        console.log("[IPN] running server-side SSL validation...");
-
-        const isValid = await validateSSLPayment(
-            data,
-            session.amount,
-            session.transactionId
-        );
-
-        console.log("[IPN] SSL validation result:", isValid);
-
+        // ── Server-side SSL validation (val_id check) ────────────────────
+        const isValid = await validateSSLPayment(data, session.amount, session.transactionId);
         if (!isValid) {
             await PaymentSessionModel.updateOne(
                 { transactionId },
                 { $set: { status: "failed" } }
             );
-
-            await deleteDraftOrder(session.draftOrderId).catch((err) => {
-                console.error("[IPN] deleteDraftOrder error on validation failure:", err);
-            });
-
+            await deleteDraftOrder(session.draftOrderId).catch(console.error);
             await logEvent(session.draftOrderId, "draft_order", "failed", {
                 reason: "SSL server-side validation failed (amount mismatch or invalid val_id)"
             });
-
             return res.status(400).send("Validation failed");
         }
 
-        if (!session.customer || !session.shippingAddress) {
-            console.log("[IPN] session data corrupt");
-            return res.status(500).send("Session data is corrupt.");
-        }
-
-        console.log("[IPN] completing draft order:", session.draftOrderId);
-
+        // ── Complete Draft Order → creates real Shopify Order ────────────
         const completedDraft = await completeDraftOrder(session.draftOrderId);
         const shopifyOrderId = String(completedDraft.order_id);
 
-        console.log("[IPN] draft completed, shopifyOrderId:", shopifyOrderId);
+        // ── Guard subdocuments before accessing ──────────────────────────
+        if (!session.customer || !session.shippingAddress) {
+            return res.status(500).send("Session data is corrupt.");
+        }
 
+        // ── Save Payment record ──────────────────────────────────────────
         await PaymentModel.create({
             shopify_order_id: shopifyOrderId,
             draft_order_id: session.draftOrderId,
@@ -418,14 +372,11 @@ export const paymentIPN = async (req: Request, res: Response) => {
             paid_at: new Date()
         });
 
-        console.log("[IPN] payment record created");
-
+        // ── Update session status ────────────────────────────────────────
         await PaymentSessionModel.updateOne(
             { transactionId },
             { $set: { status: "success" } }
         );
-
-        console.log("[IPN] session status set to success");
 
         await logEvent(shopifyOrderId, "order", "completed", {
             draftOrderId: session.draftOrderId,
@@ -434,51 +385,34 @@ export const paymentIPN = async (req: Request, res: Response) => {
             amount: session.amount
         });
 
-        console.log("[IPN] order completion logged");
+// ✅ SEND EMAIL (non-blocking + safe)
 
-        const freshSession = await PaymentSessionModel.findOne({ transactionId }).lean();
-        console.log("[IPN] fresh session emailSent:", freshSession?.emailSent);
-
-        if (!freshSession?.emailSent) {
-            console.log("[IPN] sending success email to:", session.customer.email);
-
-            void sendEmail(
+        if (!session.emailSent) {
+            sendEmail(
                 session.customer.email,
                 "Payment Successful",
                 `
-                    <h2>Payment Confirmed</h2>
-                    <p>Your order has been successfully placed.</p>
-                    <p><strong>Order ID:</strong> ${shopifyOrderId}</p>
-                    <p><strong>Transaction ID:</strong> ${transactionId}</p>
-                    <p>Amount: ${session.amount} ${session.currency}</p>
-                `
+        <h2>Payment Confirmed</h2>
+        <p>Your order has been successfully placed.</p>
+        <p><strong>Order ID:</strong> ${shopifyOrderId}</p>
+        <p><strong>Transaction ID:</strong> ${transactionId}</p>
+        <p>Amount: ${session.amount} ${session.currency}</p>
+        `
             )
                 .then(async () => {
-                    console.log("[IPN] email sent successfully");
-
                     await PaymentSessionModel.updateOne(
                         { transactionId },
                         { $set: { emailSent: true } }
                     );
-
-                    console.log("[IPN] emailSent set to true");
                 })
                 .catch((err) => {
-                    console.error("[IPN] EMAIL ERROR:", err);
-                    console.error("[IPN] EMAIL ERROR response:", err?.response);
-                    console.error("[IPN] EMAIL ERROR code:", err?.code);
-                    console.error("[IPN] EMAIL ERROR command:", err?.command);
+                    console.error("EMAIL ERROR:", err);
                 });
-        } else {
-            console.log("[IPN] email already marked sent, skipping");
         }
 
-        console.log("[IPN] done, returning OK");
         return res.send("OK");
     } catch (err: any) {
-        console.error("[IPN] ERROR:", err);
-        console.error("[IPN] ERROR message:", err?.message);
-        console.error("[IPN] ERROR response:", err?.response?.data);
+        console.error("IPN ERROR:", err.message);
         return res.status(500).send("Internal error");
     }
 };

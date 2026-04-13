@@ -11,10 +11,21 @@ export const transporter = nodemailer.createTransport({
 });
 
 export const sendEmail = async (to: string, subject: string, html: string) => {
-    await transporter.sendMail({
-        from: '"Jolly Phonics Bangladesh" <info@jollylearningbd.com>',
-        to,
-        subject,
-        html
-    });
+    console.log("[EMAIL] sending to:", to);
+
+    try {
+        const info = await transporter.sendMail({
+            from: '"Jolly Phonics Bangladesh" <info@jollylearningbd.com>',
+            to,
+            subject,
+            html
+        });
+
+        console.log("[EMAIL] sent:", info.messageId);
+
+        return info; // ✅ IMPORTANT
+    } catch (err: any) {
+        console.error("[EMAIL] ERROR:", err.message);
+        throw err; // ✅ IMPORTANT
+    }
 };
