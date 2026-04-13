@@ -16,11 +16,12 @@ interface IEnvVariables{
     SSL_ENV:string;
     BREVO_USER:string;
     BREVO_PASS:string;
+    BREVO_API_KEY:string;
 }
 
 const loadEnvVariables = ():IEnvVariables=>{
     const requiredEnvVars=[
-        "PORT","NODE_ENV","DB_URL","ORIGINS","SHOPIFY_STORE","SHOPIFY_ADMIN_TOKEN","SHOPIFY_API_VERSION","SSL_STORE_ID","SSL_STORE_PASS","BASE_URL","SSL_IPS","SSL_ENV","BREVO_USER","BREVO_PASS",
+        "PORT","NODE_ENV","DB_URL","ORIGINS","SHOPIFY_STORE","SHOPIFY_ADMIN_TOKEN","SHOPIFY_API_VERSION","SSL_STORE_ID","SSL_STORE_PASS","BASE_URL","SSL_IPS","SSL_ENV","BREVO_USER","BREVO_PASS","BREVO_API_KEY"
     ];
     requiredEnvVars.forEach((varName)=>{
         if(!process.env[varName]){
@@ -42,6 +43,7 @@ const loadEnvVariables = ():IEnvVariables=>{
         SSL_ENV: process.env.SSL_ENV as string,
         BREVO_USER: process.env.BREVO_USER as string,
         BREVO_PASS: process.env.BREVO_PASS as string,
+        BREVO_API_KEY: process.env.BREVO_API_KEY as string,
     }
 }
 

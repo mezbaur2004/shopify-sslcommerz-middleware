@@ -1,31 +1,31 @@
-import nodemailer from "nodemailer";
-import {envVars} from "../config/envVariable.config";
+import axios from "axios";
 
-export const transporter = nodemailer.createTransport({
-    host: "smtp-relay.brevo.com",
-    port: 587,
-    auth: {
-        user: envVars.BREVO_USER,
-        pass: envVars.BREVO_PASS
-    }
-});
+export const sendEmail = async (
+    to: string,
+    subject: string,
+    html: string
+) => {
+    console.log("[EMAIL] sending via Brevo API...");
 
-export const sendEmail = async (to: string, subject: string, html: string) => {
-    console.log("[EMAIL] sending to:", to);
-
-    try {
-        const info = await transporter.sendMail({
-            from: '"Jolly Phonics Bangladesh" <info@jollylearningbd.com>',
-            to,
+    const res = await axios.post(
+        "https://api.brevo.com/v3/smtp/email",
+        {
+            sender: {
+                name: "Jolly Learning",
+                email: "your_verified_email@domain.com", // MUST be verified in Brevo
+            },
+            to: [{ email: to }],
             subject,
-            html
-        });
+            htmlContent: html,
+        },
+        {
+            headers: {
+                "api-key": process.env.BREVO_API_KEY!,
+                "Content-Type": "application/json",
+            },
+            timeout: 10000,
+        }
+    );
 
-        console.log("[EMAIL] sent:", info.messageId);
-
-        return info; // ✅ IMPORTANT
-    } catch (err: any) {
-        console.error("[EMAIL] ERROR:", err.message);
-        throw err; // ✅ IMPORTANT
-    }
+    console.log("[EMAIL] sent:", res.data);
 };
