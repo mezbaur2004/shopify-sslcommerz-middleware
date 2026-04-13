@@ -386,6 +386,8 @@ export const paymentIPN = async (req: Request, res: Response) => {
         });
 
 // ✅ SEND EMAIL (non-blocking + safe)
+        console.log("test 1:",session.emailSent);
+        console.log("email", session.customer.email);
         if (!session.emailSent) {
             sendEmail(
                 session.customer.email,
