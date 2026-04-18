@@ -1,4 +1,5 @@
 import axios from "axios";
+import {envVars} from "../config/envVariable.config";
 
 export const sendEmail = async (
     to: string,
@@ -12,7 +13,7 @@ export const sendEmail = async (
         {
             sender: {
                 name: "Jolly Learning",
-                email: "your_verified_email@domain.com", // MUST be verified in Brevo
+                email: envVars.BREVO_VERIFIED_EMAIL, // MUST be verified in Brevo
             },
             to: [{ email: to }],
             subject,
