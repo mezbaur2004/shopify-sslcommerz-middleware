@@ -101,7 +101,7 @@ SSL_IPS=103.26.139.87,87,103.26.139.81,103.132.153.81,103.132.153.148
 
 * **Session Management:** The 15-minute Render inactivity timeout must be monitored to ensure it consistently encompasses the full SSLCommerz payment lifecycle and IPN receipt.
 
-## HACK NOTE:
+## DESIGN NOTE:
 * This architecture treats the API update as a "Manual" payment, effectively creating a private, toll-free payment lane for the store at zero infrastructure cost.
 
 ---
