@@ -1,110 +1,131 @@
-#  Shopify-SSLCommerz-Middleware-Backend
+# Shopify ↔ SSLCommerz payment middleware
 
-**Project:** Jolly Phonics Bangladesh  
-**Architecture:** Shopify Admin API + SSLCommerz Middleware (Node.js/TypeScript)  
-**Hosting Environment:** Render (Free Tier Optimized)
+A Node.js/TypeScript service that lets a Shopify store take payments through
+[SSLCommerz](https://www.sslcommerz.com/), the Bangladeshi payment gateway. It runs in
+production for the Jolly Phonics Bangladesh store, hosted on Render's free tier.
 
-This repository contains a specialized middleware designed to facilitate local payments via **SSLCommerz** for Shopify stores. It is engineered to bypass the standard 2% Shopify third-party transaction fee and optimize for zero-cost hosting on Render's free tier.
+Shopify's checkout can't call SSLCommerz directly, so the store's cart sends customers to
+this service instead. The service creates a Shopify draft order, hands the customer to
+SSLCommerz, verifies the payment with SSLCommerz's own validation API, and only then turns
+the draft into a paid order.
 
----
+## Payment flow
 
-## ✨ Features
-
-- **0% Transaction Fees:** Utilizes the Shopify Admin API to process payments as "Manual," bypassing platform taxes.
-- **Latency-Masking:** Custom "Wake-Up" protocol to handle Render free-tier cold starts (~50s).
-- **Hosting Savings:** Operates on Render's free tier, saving the initial $7/month hosting cost.
-- **TypeScript Core:** Type-safe development for financial transactions.
-- **Multi-Layer Security:** Includes Helmet, HPP, rate limiting, and input sanitization.
-- **Accounting Ready:** Pre-configured data mapping for SSLCommerz Merchant Panel reconciliation.
-
----
-
-## 🏗️ System Architecture Overview
-
-This infrastructure facilitates local payments while maintaining a $0.00 overhead by intercepting the standard checkout flow.
-
-1.  **Entry Point:** A custom Liquid "Online Payment" button replaces the standard checkout on the Shopify Cart page.
-2.  **Transaction Flow:** Cart → Custom Checkout Form → Render Middleware → SSLCommerz Gateway → Shopify Admin API.
-3.  **Order Finalization:** Orders are initialized as **Draft Orders**. Upon payment verification, the middleware converts them to **Completed Orders** and marks them as **Paid**. This classification ensures Shopify treats the transaction as "Manual," incurring **0% transaction fees**.
-
----
-
-## ⚡ Infrastructure Optimization: Render Lifecycle
-
-To utilize a zero-cost hosting model (Render Free Tier) without compromising user experience, the system employs a **Latency-Masking Wake-Up Protocol**:
-
-* **Initial Trigger (T+0s):** A background dummy request hits the Render backend immediately when the user clicks "Online Payment" on the cart.
-* **Cold-Start Buffer:** While Render initiates the server spin-up, the user is redirected to a custom form to enter shipping details. This manual input process (~45s) naturally masks the Render boot time.
-* **IPN Persistence:** Render’s 15-minute inactivity timer matches the SSLCommerz 15-minute session window. This ensures the server remains awake to receive and validate the **Instant Payment Notification (IPN)** before returning to a sleep state.
-
----
-
-## 📊 SSLCommerz Data Mapping Protocol
-
-The middleware transmits specific metadata to SSLCommerz to automate backend lookups and facilitate accurate financial reporting for the organization.
-
-| Field | Purpose | Technical Value / Source |
-| :--- | :--- | :--- |
-| **`value_a`** | Store Identifier | `JOLLY_PHONICS_BANGLADESH` |
-| **`value_b`** | Internal Lookup ID | `{order.transaction_id}` (Shopify Draft ID) |
-| **`value_c`** | Product Category | `PHYSICAL_BOOKS` |
-| **`value_d`** | Customer Metadata | `{order.customer_email}` |
-| **`tran_id`** | Transaction ID | `{order.transaction_id}` |
-
----
-
-## 🛠️ Operational Workflows
-
-### Developer & System Validation
-The system utilizes a multi-step validation process within the `validateSSLPayment` function to ensure transaction security:
-* **Status Verification:** Confirms a `VALID` or `VALIDATED` status from the SSLCommerz API.
-* **Precision Matching:** Implements a **±0.01 BDT tolerance** check to prevent errors caused by floating-point rounding between the bank and Shopify.
-* **Integrity Check:** Compares the returned `tran_id` against the internal `expectedTransactionId` to prevent session spoofing.
-
-### Accounting & Reconciliation
-To audit sales within the SSLCommerz Merchant Panel:
-1.  Export the **Transaction Report** (CSV/Excel).
-2.  Filter the **"Custom Field 1"** (`value_a`) column for `JOLLY_PHONICS_BANGLADESH`.
-3.  Use **"Custom Field 2"** (`value_b`) to cross-reference the transaction with the specific Shopify Order ID.
-
----
-
-## 💰 Financial Impact Analysis
-
-* **Shopify Fee Savings:** Eliminates the 2% Shopify "Third-Party Provider" fee (saving approx. **৳2,000 per ৳100,000** processed).
-* **Hosting Optimization:** Eliminates the requirement for a paid "Starter" instance (saving **$7.00 USD/month**).
-* **Total Efficiency:** This architecture allows the business to scale with zero fixed overhead and zero transaction-based platform taxes.
-
----
-
-## ⚙️ Environment Variables
-
-Create a `.env` file in the root directory:
-
-### ⚙️ Environment Variables
-
-```env
-PORT=8080
-DB_URL=mongodb+srv://<username>:<password>@cluster.mongodb.net/database
-NODE_ENV=production
-BASE_URL=https://backendurl.com
-ORIGINS=https://sandbox.sslcommerz.com,https://securepay.sslcommerz.com,https://setyourfrontends.com
-SHOPIFY_STORE=jolly-phonics-bangladesh.myshopify.com
-SHOPIFY_ADMIN_TOKEN=shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SHOPIFY_API_VERSION=2026-01
-SSL_STORE_ID=your_store_id
-SSL_STORE_PASS=your_store_password
-SSL_IPS=103.26.139.87,87,103.26.139.81,103.132.153.81,103.132.153.148
+```text
+Cart page ("Online Payment" button, Liquid)
+   │  1. wake-up request to this service (hides the free-tier cold start)
+   ▼
+Checkout form (shipping details)
+   │  2. POST /api/v1/payment/init
+   ▼
+This service ── creates a Shopify draft order, stores a payment session (status: pending)
+   │  3. GET /api/v1/payment/redirect/:transactionId → SSLCommerz session → gateway page
+   ▼
+SSLCommerz ── customer pays
+   │  4. POST /api/v1/payment/ipn   (server to server)
+   ▼
+This service ── verifies the payment (below), completes the draft order in Shopify,
+                records the payment, marks the session success, emails the customer
+   │  5. customer returns to /payment/success or /payment/fail
 ```
-## 🛡️ Security & Maintenance 
-* **Access Control :**  Ensure the Shopify Admin Access Token is strictly restricted to write_draft_orders and write_orders scopes to maintain the principle of least privilege.
 
-* **Session Management:** The 15-minute Render inactivity timeout must be monitored to ensure it consistently encompasses the full SSLCommerz payment lifecycle and IPN receipt.
+## How a payment is verified
 
-## DESIGN NOTE:
-* This architecture treats the API update as a "Manual" payment, effectively creating a private, toll-free payment lane for the store at zero infrastructure cost.
+The IPN handler trusts nothing in the notification body on its own. Before an order is
+completed:
 
----
-## 🧑‍💻 Author
+1. The session for the notification's transaction ID must exist and not be past its expiry.
+   An expired session's draft order is deleted.
+2. The notification's `tran_id` must match the session's transaction ID.
+3. The notification's status must be `VALID` or `VALIDATED`.
+4. The service calls SSLCommerz's validation API with the `val_id` and the store
+   credentials, then checks the API's answer:
+   - status is `VALID` or `VALIDATED`
+   - amount matches the session within ±0.01 BDT (absorbs floating-point rounding)
+   - `tran_id` matches the session and a `bank_tran_id` is present
+5. Only then is the draft order completed in Shopify and a `payments` record written.
 
-Mezbaur Are Rafi – [GitHub](https://github.com/mezbaur2004)
+A repeated IPN for a session already marked `success` is acknowledged without being
+processed again. Each IPN outcome (received, failed, expired, completed) is written to a
+`payment_events` collection for auditing.
+
+An IP allowlist (`SSL_IPS`) on the IPN route adds a further check; the validation API call
+in step 4 is what actually proves a payment.
+
+## Why orders are recorded as manual payments
+
+The draft order is completed through the Admin API and marked paid, so Shopify records it
+as a manual-payment order. Manual-payment orders don't incur Shopify's third-party
+transaction fee, which would otherwise apply to an external gateway.
+
+## Hosting on Render's free tier
+
+Free-tier services sleep after 15 minutes without traffic and take roughly 50 seconds to
+wake. The cart's "Online Payment" button sends a background request to wake the service
+while the customer fills in shipping details, so the boot time is hidden behind the form.
+The 15-minute sleep timer matches SSLCommerz's 15-minute session window, so the service
+stays awake to receive the IPN.
+
+## Fields sent to SSLCommerz for reconciliation
+
+| Field | Value | Used for |
+|---|---|---|
+| `tran_id` | session transaction ID | matching the payment to its session |
+| `value_a` | `JOLLY_PHONICS_BANGLADESH` | filtering this store's payments in the merchant panel |
+| `value_b` | session transaction ID | looking up the session when the IPN arrives |
+| `value_c` | `PHYSICAL_BOOKS` | product category for accounting |
+| `value_d` | customer email | customer lookup |
+
+## Running locally
+
+Requires Node.js 24.
+
+```bash
+npm install
+cp .env.example .env   # then fill in the values below
+npm run dev
+```
+
+| Variable | Meaning |
+|---|---|
+| `PORT` | HTTP port |
+| `NODE_ENV` | `development` or `production` |
+| `DB_URL` | MongoDB connection string |
+| `BASE_URL` | public URL of this service (used for SSLCommerz callbacks) |
+| `ORIGINS` | comma-separated origins allowed by CORS |
+| `SHOPIFY_STORE` | `your-store.myshopify.com` |
+| `SHOPIFY_ADMIN_TOKEN` | Admin API token, scoped to `write_draft_orders` and `write_orders` only |
+| `SHOPIFY_API_VERSION` | e.g. `2026-01` |
+| `SSL_ENV` | `securepay` for live payments; anything else uses the sandbox |
+| `SSL_STORE_ID`, `SSL_STORE_PASS` | SSLCommerz store credentials |
+| `SSL_IPS` | comma-separated SSLCommerz IPN source IPs |
+| `BREVO_API_KEY`, `BREVO_VERIFIED_EMAIL` | transactional email for payment confirmations |
+
+## Tests
+
+```bash
+npm test          # vitest
+npm run typecheck # tsc --noEmit
+```
+
+The tests cover payment verification (`validateSSLPayment`): accepted statuses, the amount
+tolerance, transaction ID and bank transaction ID checks, and failure of the validation API.
+They mock SSLCommerz, so no credentials are needed. CI runs type checking, tests and the
+build on every push and pull request.
+
+## Project layout
+
+```text
+src/
+  app.ts                   Express app: CORS, Helmet, HPP, rate limiting, sanitisation
+  controller/              init, redirect, IPN, success and fail handlers
+  service/ssl.service.ts   SSLCommerz session creation and payment validation
+  service/shopify.service.ts  draft order create / complete / delete
+  middleware/              IPN IP allowlist, input sanitisation
+  model/                   payment sessions, payments, payment events
+test/                      vitest tests
+```
+
+## Author
+
+Mezbaur Are Rafi · [GitHub](https://github.com/mezbaur2004)

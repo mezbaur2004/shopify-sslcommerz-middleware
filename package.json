@@ -1,12 +1,14 @@
 {
-  "name": "ts-express-structure",
+  "name": "shopify-sslcommerz-middleware",
   "version": "1.0.0",
-  "description": "",
+  "description": "Payment middleware connecting a Shopify store to SSLCommerz",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -35,7 +37,8 @@
     "@types/nodemailer": "^8.0.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   },
   "overrides": {
     "jsdom": "22.1.0"
