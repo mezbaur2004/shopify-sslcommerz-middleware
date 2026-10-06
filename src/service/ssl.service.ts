@@ -3,7 +3,7 @@ import { envVars } from "../config/envVariable.config";
 
 let SSL_BASE;
     if(envVars.SSL_ENV==="securepay"){
-        SSL_BASE="https://securepay.sslcommerz.com;"
+        SSL_BASE="https://securepay.sslcommerz.com";
     }else{
         SSL_BASE="https://sandbox.sslcommerz.com";
     }
