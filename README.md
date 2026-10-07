@@ -1,8 +1,11 @@
 # Shopify ↔ SSLCommerz payment middleware
 
 A Node.js/TypeScript service that lets a Shopify store take payments through
-[SSLCommerz](https://www.sslcommerz.com/), the Bangladeshi payment gateway. It runs in
-production for the Jolly Phonics Bangladesh store, hosted on Render's free tier.
+[SSLCommerz](https://www.sslcommerz.com/), the Bangladeshi payment gateway. It is deployed
+on Render's free tier alongside the live Jolly Phonics Bangladesh store and tested end to end
+against the SSLCommerz sandbox. The store's online-payment button stays hidden until the
+organization buys a live SSLCommerz merchant account; switching over needs only
+`SSL_ENV=securepay` and the live store credentials.
 
 Shopify's checkout can't call SSLCommerz directly, so the store's cart sends customers to
 this service instead. The service creates a Shopify draft order, hands the customer to
